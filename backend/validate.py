@@ -1,18 +1,57 @@
 from pythermalcomfort.models import heat_index_rothfusz, wbgt, utci
 
+
+def check(name, actual, expected):
+    passed = abs(actual - expected) < 0.1
+    status = "PASS" if passed else "FAIL"
+
+    print(
+        f"{name}: actual={actual}, "
+        f"expected={expected} -> {status}"
+    )
+
+    return passed
+
+
 def run_validation():
-    print("=== Validation ===")
-    # Heat index: tdb=30, rh=70 -> roughly 35 C depending on the model, ptc will output it.
-    hi_result = heat_index_rothfusz(tdb=30, rh=70)
-    print(f"Heat Index (tdb=30, rh=70): {hi_result.hi} -> PASS")
+    print("=== ThermaSense Thermal Formula Validation ===\n")
 
-    # WBGT: twb=25, tg=30, without solar load
-    wbgt_result = wbgt(twb=25, tg=30, with_solar_load=False)
-    print(f"WBGT (twb=25, tg=30): {wbgt_result.wbgt} -> PASS")
+    # 1. Heat Index
+    hi_result = heat_index_rothfusz(tdb=29, rh=50)
+    hi_pass = check(
+        "Heat Index",
+        hi_result.hi,
+        29.7
+    )
 
-    # UTCI: tdb=29, tr=32, v=1.0, rh=60
-    utci_result = utci(tdb=29, tr=32, v=1.0, rh=60)
-    print(f"UTCI (tdb=29, tr=32, v=1.0, rh=60): {utci_result.utci}, Stress: {utci_result.stress_category} -> PASS")
+    # 2. WBGT
+    wbgt_result = wbgt(twb=25, tg=32)
+    wbgt_pass = check(
+        "WBGT",
+        wbgt_result.wbgt,
+        27.1
+    )
+
+    # 3. UTCI
+    utci_result = utci(
+        tdb=25,
+        tr=25,
+        v=1.0,
+        rh=50
+    )
+    utci_pass = check(
+        "UTCI",
+        utci_result.utci,
+        24.6
+    )
+
+    print("\n=== Final Result ===")
+
+    if hi_pass and wbgt_pass and utci_pass:
+        print("ALL VALIDATIONS PASSED")
+    else:
+        print("VALIDATION FAILED")
+
 
 if __name__ == "__main__":
     run_validation()

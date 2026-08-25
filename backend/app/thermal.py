@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Query
 from pythermalcomfort.models import heat_index_rothfusz, wbgt, utci
 import math
+from app.derivation import derive_thermal_inputs
 
 router = APIRouter()
 
@@ -54,4 +55,59 @@ def get_utci(
     return {
         "utci": result.utci,
         "stress_category": result.stress_category
+    }
+
+@router.get("/derive_all")
+def get_derive_all(
+    temp_c: float = Query(..., description="Air temperature in °C"),
+    humidity: float = Query(..., description="Relative humidity in %"),
+    wind_ms: float = Query(..., description="Wind speed at 10m in m/s"),
+    solar_rad: float = Query(..., description="Global Horizontal Irradiance in W/m2"),
+    timestamp: str = Query(..., description="ISO 8601 UTC timestamp"),
+    latitude: float = Query(..., description="Latitude"),
+    longitude: float = Query(..., description="Longitude"),
+    pressure_hpa: float = Query(None, description="Atmospheric pressure in hPa")
+):
+    """
+    Takes raw weather data, derives Tnwb, Tg, and Tr using the Liljegren (2008) method,
+    then calculates Heat Index, WBGT, and UTCI.
+    """
+    derived = derive_thermal_inputs(
+        temp_c=temp_c,
+        humidity=humidity,
+        wind_ms=wind_ms,
+        solar_rad=solar_rad,
+        timestamp=timestamp,
+        latitude=latitude,
+        longitude=longitude,
+        pressure_hpa=pressure_hpa
+    )
+    
+    # Calculate Heat Index
+    hi_result = heat_index_rothfusz(tdb=temp_c, rh=humidity)
+    
+    # Calculate WBGT
+    wbgt_result = wbgt(twb=derived["twb_natural"], tg=derived["tg"], tdb=temp_c, with_solar_load=True)
+    
+    # Calculate UTCI
+    utci_result = utci(tdb=temp_c, tr=derived["tr"], v=wind_ms, rh=humidity)
+    
+    return {
+        "raw_inputs": {
+            "temp_c": temp_c,
+            "humidity": humidity,
+            "wind_ms": wind_ms,
+            "solar_rad": solar_rad,
+            "timestamp": timestamp,
+            "latitude": latitude,
+            "longitude": longitude,
+            "pressure_hpa": pressure_hpa
+        },
+        "derived_inputs": derived,
+        "indices": {
+            "heat_index": hi_result.hi,
+            "wbgt": wbgt_result.wbgt,
+            "utci": utci_result.utci,
+            "utci_stress": utci_result.stress_category
+        }
     }

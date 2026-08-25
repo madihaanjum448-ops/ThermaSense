@@ -1,0 +1,23 @@
+# Optional: run this if you want a local Postgres+PostGIS instead of
+# Supabase/Railway. For the hackathon, Supabase is usually faster to set
+# up (free tier, PostGIS enabled with one click, no local Docker needed
+# on presentation day) — use this file for local dev/testing only.
+
+version: "3.9"
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: heatwave_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: heatwave
+      POSTGRES_PASSWORD: heatwave_dev_pw
+      POSTGRES_DB: heatwave
+    ports:
+      - "5432:5432"
+    volumes:
+      - heatwave_pgdata:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
+
+volumes:
+  heatwave_pgdata:

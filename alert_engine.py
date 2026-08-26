@@ -34,7 +34,7 @@ WEBHOOK_URL = os.getenv(
 
 
 def get_latest_risk(ward_id: int):
-    """Get the most recently calculated risk score for a ward."""
+    """Get the most recently calculated CURRENT risk score for a ward."""
 
     with engine.connect() as conn:
         row = conn.execute(
@@ -46,12 +46,16 @@ def get_latest_risk(ward_id: int):
                     score_time,
                     risk_band,
                     risk_score_raw,
+                    vulnerability_score,
+                    final_risk_score,
+                    final_risk_band,
                     heat_index_c,
                     wbgt_c,
                     utci_c
                 FROM risk_scores
                 WHERE ward_id = :ward_id
-                ORDER BY computed_at DESC
+                  AND is_forecast = FALSE
+                ORDER BY score_time DESC, id DESC
                 LIMIT 1
                 """
             ),
@@ -98,15 +102,23 @@ def send_webhook(
     message: str
 ):
     """Send an alert to the configured webhook."""
+    risk_band = risk.get("final_risk_band") or risk.get("risk_band")
+    final_score = float(
+        risk.get("final_risk_score")
+        if risk.get("final_risk_score") is not None
+        else risk.get("risk_score_raw", 0.0)
+    )
 
     payload = {
         "alert_id": alert_id,
         "ward_id": ward_id,
-        "risk_band": risk["risk_band"],
-        "risk_score": float(risk["risk_score_raw"]),
-        "heat_index_c": float(risk["heat_index_c"]),
-        "wbgt_c": float(risk["wbgt_c"]),
-        "utci_c": float(risk["utci_c"]),
+        "risk_band": risk_band,
+        "risk_score": final_score,
+        "raw_risk_score": float(risk.get("risk_score_raw", 0.0)),
+        "vulnerability_score": float(risk.get("vulnerability_score") or 0.0),
+        "heat_index_c": float(risk.get("heat_index_c", 0.0)),
+        "wbgt_c": float(risk.get("wbgt_c", 0.0)),
+        "utci_c": float(risk.get("utci_c", 0.0)),
         "message": message,
         "triggered_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -147,7 +159,12 @@ def create_alert(ward_id: int, risk: dict):
     to HIGH or EXTREME.
     """
 
-    risk_band = risk["risk_band"]
+    risk_band = risk.get("final_risk_band") or risk.get("risk_band")
+    final_score = float(
+        risk.get("final_risk_score")
+        if risk.get("final_risk_score") is not None
+        else risk.get("risk_score_raw", 0.0)
+    )
 
     # Only HIGH and EXTREME risks generate alerts.
     if risk_band not in ("high", "extreme"):
@@ -181,12 +198,12 @@ def create_alert(ward_id: int, risk: dict):
         # This is a genuine escalation, so send an alert.
         print(
             f"Risk escalation detected: "
-            f"{previous_band.upper()} → {risk_band.upper()}"
+            f"{previous_band.upper()} -> {risk_band.upper()}"
         )
 
     message = (
         f"{risk_band.upper()} heat risk detected for ward {ward_id}. "
-        f"Risk score: {risk['risk_score_raw']}, "
+        f"Risk score: {final_score}, "
         f"WBGT: {risk['wbgt_c']}°C, "
         f"UTCI: {risk['utci_c']}°C."
     )
@@ -285,11 +302,13 @@ def check_and_alert(ward_id: int):
         risk
     )
 
+    current_band = risk.get("final_risk_band") or risk.get("risk_band")
+
     if alert_id is None:
         return {
             "alert_created": False,
             "reason": (
-                f"Risk band is {risk['risk_band']}"
+                f"Risk band is {current_band}"
             ),
             "risk": risk,
         }

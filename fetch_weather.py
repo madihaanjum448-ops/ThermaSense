@@ -137,8 +137,8 @@ def fetch_open_meteo(
         # 7-day hourly forecast.
         "forecast_days": 7,
 
-        # Return local timestamps for easier interpretation.
-        "timezone": "auto",
+        # Fetch directly in UTC to ensure unambiguous timestamps for solar geometry.
+        "timezone": "UTC",
 
         # We want wind in m/s internally.
         "wind_speed_unit": "ms",

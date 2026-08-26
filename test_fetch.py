@@ -28,8 +28,38 @@ SAMPLE_WARD = {
 }
 
 
+def test_timezone_parsing():
+    """Regression test verifying timezone conversion to UTC."""
+    print("--- Running Timezone Regression Tests ---")
+
+    # 1. Non-UTC timestamp with explicit IST (+05:30) offset
+    ist_raw = "2026-08-27T14:00:00+05:30"
+    parsed_ist = fetch_weather._parse_iso_time(ist_raw)
+    assert parsed_ist.tzinfo == timezone.utc, f"Expected UTC tzinfo, got {parsed_ist.tzinfo}"
+    assert parsed_ist.hour == 8 and parsed_ist.minute == 30, f"Expected 08:30 UTC for 14:00 IST, got {parsed_ist.hour}:{parsed_ist.minute}"
+    assert parsed_ist.isoformat() == "2026-08-27T08:30:00+00:00", f"Unexpected ISO format: {parsed_ist.isoformat()}"
+    print(f"  [PASS] IST timestamp {ist_raw} correctly converted to {parsed_ist.isoformat()}")
+
+    # 2. ISO timestamp with Z suffix
+    utc_z_raw = "2026-08-27T08:30:00Z"
+    parsed_z = fetch_weather._parse_iso_time(utc_z_raw)
+    assert parsed_z.tzinfo == timezone.utc
+    assert parsed_z.hour == 8 and parsed_z.minute == 30
+    print(f"  [PASS] UTC Z-suffixed timestamp {utc_z_raw} correctly parsed to {parsed_z.isoformat()}")
+
+    # 3. Naive ISO timestamp returned by Open-Meteo when timezone=UTC
+    utc_naive_raw = "2026-08-27T08:30"
+    parsed_naive = fetch_weather._parse_iso_time(utc_naive_raw)
+    assert parsed_naive.tzinfo == timezone.utc
+    assert parsed_naive.hour == 8 and parsed_naive.minute == 30
+    print(f"  [PASS] Open-Meteo UTC naive timestamp {utc_naive_raw} correctly tagged as {parsed_naive.isoformat()}")
+
+    print("--- Timezone Regression Tests PASSED ---\n")
+
+
 def run_mock():
     print("Running in MOCK mode — no live API calls, no live DB writes.\n")
+    test_timezone_parsing()
     fake_weather = {
         "current": {
             "reading_time": datetime.now(timezone.utc),
@@ -59,6 +89,7 @@ def run_mock():
 
 
 def run_live():
+    test_timezone_parsing()
     print(f"Fetching live data for {SAMPLE_WARD['name']}, {SAMPLE_WARD['city']}...\n")
 
     # 1. Insert (or reuse) the sample ward

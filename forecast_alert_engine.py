@@ -40,6 +40,9 @@ def get_current_risk(ward_id: int):
                     score_time,
                     risk_band,
                     risk_score_raw,
+                    vulnerability_score,
+                    final_risk_score,
+                    final_risk_band,
                     heat_index_c,
                     wbgt_c,
                     utci_c
@@ -76,6 +79,9 @@ def get_upcoming_forecast_risks(
                     score_time,
                     risk_band,
                     risk_score_raw,
+                    vulnerability_score,
+                    final_risk_score,
+                    final_risk_band,
                     heat_index_c,
                     wbgt_c,
                     utci_c
@@ -106,7 +112,7 @@ def find_next_high_risk(
     limit: int = 168,
 ):
     """
-    Find the first future HIGH or EXTREME forecast.
+    Find the first future HIGH or EXTREME forecast using final_risk_band.
     """
 
     forecasts = get_upcoming_forecast_risks(
@@ -116,7 +122,8 @@ def find_next_high_risk(
     )
 
     for forecast in forecasts:
-        if forecast["risk_band"] in ALERT_BANDS:
+        band = forecast.get("final_risk_band") or forecast.get("risk_band")
+        if band in ALERT_BANDS:
             return forecast
 
     return None
@@ -191,12 +198,27 @@ def check_forecast_warning(
         forecast_time,
     )
 
+    current_band = current.get("final_risk_band") or current.get("risk_band")
+    current_score = float(
+        current.get("final_risk_score")
+        if current.get("final_risk_score") is not None
+        else current.get("risk_score_raw", 0.0)
+    )
+
+    target_band = next_high.get("final_risk_band") or next_high.get("risk_band")
+    target_score = float(
+        next_high.get("final_risk_score")
+        if next_high.get("final_risk_score") is not None
+        else next_high.get("risk_score_raw", 0.0)
+    )
+
     return {
         "warning": True,
         "ward_id": ward_id,
 
         "current": {
-            "risk_band": current["risk_band"],
+            "risk_band": current_band,
+            "risk_score": current_score,
             "risk_score_raw": float(
                 current["risk_score_raw"]
             ),
@@ -209,10 +231,16 @@ def check_forecast_warning(
             # risk_scores row that triggered the warning.
             "risk_score_id": next_high["id"],
 
-            "risk_band": next_high["risk_band"],
+            "risk_band": target_band,
+
+            "risk_score": target_score,
 
             "risk_score_raw": float(
                 next_high["risk_score_raw"]
+            ),
+
+            "vulnerability_score": float(
+                next_high.get("vulnerability_score") or 0.0
             ),
 
             "score_time": forecast_time,
@@ -234,7 +262,7 @@ def check_forecast_warning(
 
         "message": (
             f"Ward {ward_id} is forecast to reach "
-            f"{next_high['risk_band'].upper()} thermal risk "
+            f"{target_band.upper()} thermal risk "
             f"in approximately {lead_hours} hours."
         ),
     }

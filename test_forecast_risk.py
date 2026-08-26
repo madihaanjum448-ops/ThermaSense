@@ -77,27 +77,21 @@ print(
     f"{result['utci_c']} °C"
 )
 
-print(
-    f"  Risk score : "
-    f"{result['risk_score_raw']}"
-)
+from db import get_ward_demographics
+from risk_scoring import calculate_vulnerability_score, combine_risk
 
-print(
-    f"  Risk band  : "
-    f"{result['risk_band']}"
-)
+demographics = get_ward_demographics(WARD_ID)
+expected_vuln = calculate_vulnerability_score(demographics) if demographics else 0.0
+expected_final_score, expected_final_band = combine_risk(result["risk_score_raw"], expected_vuln)
 
-print(
-    f"  MRT        : "
-    f"{result['mean_radiant_temperature_c']} °C"
-)
+print(f"  Vulnerability: {result['vulnerability_score']}")
+print(f"  Final Risk   : {result['final_risk_score']}")
+print(f"  Final Band   : {result['final_risk_band']}")
 
-print(
-    f"  Note       : "
-    f"{result['solar_note']}"
-)
+# Assertions verifying canonical risk combination in forecast engine
+assert result["vulnerability_score"] == expected_vuln, "Forecast vulnerability score does not match canonical calculation"
+assert result["final_risk_score"] == expected_final_score, "Forecast final risk score does not match canonical combine_risk"
+assert result["final_risk_band"] == expected_final_band, "Forecast final risk band does not match canonical combine_risk"
+assert result["final_risk_score"] >= result["risk_score_raw"], "Forecast final score cannot be lower than raw thermal score"
 
-
-print(
-    "\nFORECAST THERMAL TEST PASSED"
-)
+print("\nFORECAST THERMAL TEST PASSED — Assertions verified canonical risk alignment")

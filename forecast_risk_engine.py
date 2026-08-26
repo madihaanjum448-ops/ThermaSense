@@ -22,8 +22,8 @@ import math
 from datetime import datetime, timezone
 
 from sqlalchemy import text
-
-from db import engine
+from db import engine, get_ward_demographics
+from risk_scoring import calculate_vulnerability_score, combine_risk
 
 from pythermalcomfort.models import (
     heat_index_lu,
@@ -280,76 +280,20 @@ def calculate_forecast_risk(
         utci_c,
     )
         # --------------------------------------------------
-    # Vulnerability-weighted risk
+    # Vulnerability-weighted risk (Canonical risk_scoring.py)
     # --------------------------------------------------
 
-    with engine.connect() as conn:
-        ward_row = conn.execute(
-            text(
-                """
-                SELECT
-                    elderly_pct,
-                    outdoor_worker_pct,
-                    slum_household_pct,
-                    green_cover_pct
-                FROM wards
-                WHERE id = :ward_id
-                """
-            ),
-            {
-                "ward_id": forecast_row["ward_id"]
-            },
-        ).fetchone()
-
-    if ward_row:
-        elderly_pct = float(ward_row.elderly_pct or 0)
-        outdoor_worker_pct = float(
-            ward_row.outdoor_worker_pct or 0
-        )
-        slum_household_pct = float(
-            ward_row.slum_household_pct or 0
-        )
-        green_cover_pct = float(
-            ward_row.green_cover_pct or 0
-        )
-    else:
-        elderly_pct = 0.0
-        outdoor_worker_pct = 0.0
-        slum_household_pct = 0.0
-        green_cover_pct = 0.0
-
-    # Vulnerability score: 0–100
-    vulnerability_score = round(
-        (
-            0.30 * elderly_pct
-            + 0.30 * outdoor_worker_pct
-            + 0.25 * slum_household_pct
-            + 0.15 * (100.0 - green_cover_pct)
-        ),
-        2,
+    ward_id = forecast_row["ward_id"]
+    demographics = get_ward_demographics(ward_id)
+    vulnerability_score = (
+        calculate_vulnerability_score(demographics)
+        if demographics
+        else 0.0
     )
-
-    vulnerability_score = max(
-        0.0,
-        min(100.0, vulnerability_score)
+    final_risk_score, final_risk_band = combine_risk(
+        score,
+        vulnerability_score,
     )
-
-    # Combine thermal risk and vulnerability.
-    final_risk_score = round(
-        0.70 * score
-        + 0.30 * vulnerability_score,
-        3,
-    )
-
-    # Final risk band
-    if final_risk_score >= 80:
-        final_risk_band = "extreme"
-    elif final_risk_score >= 60:
-        final_risk_band = "high"
-    elif final_risk_score >= 35:
-        final_risk_band = "moderate"
-    else:
-        final_risk_band = "low"
 
     return {
         "ward_id": forecast_row["ward_id"],

@@ -68,6 +68,12 @@ def send_forecast_warning(
         "risk_band"
     ]
 
+    risk_score = float(
+        forecast.get("final_risk_score")
+        if forecast.get("final_risk_score") is not None
+        else forecast.get("risk_score_raw", 0.0)
+    )
+
     forecast_time = forecast[
         "score_time"
     ]
@@ -106,8 +112,7 @@ def send_forecast_warning(
         f"Expected at {forecast_time.isoformat()}. "
         f"Lead time: approximately "
         f"{lead_hours} hours. "
-        f"Risk score: "
-        f"{forecast['risk_score_raw']}, "
+        f"Final risk score: {risk_score}, "
         f"WBGT: {forecast['wbgt_c']}°C, "
         f"UTCI: {forecast['utci_c']}°C."
     )
@@ -169,8 +174,12 @@ def send_forecast_warning(
         "ward_id": ward_id,
         "risk_score_id": risk_score_id,
         "risk_band": risk_band,
-        "risk_score": float(
-            forecast["risk_score_raw"]
+        "risk_score": risk_score,
+        "raw_risk_score": float(
+            forecast.get("risk_score_raw", 0.0)
+        ),
+        "vulnerability_score": float(
+            forecast.get("vulnerability_score") or 0.0
         ),
         "heat_index_c": float(
             forecast["heat_index_c"]

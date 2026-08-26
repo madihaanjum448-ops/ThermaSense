@@ -57,16 +57,19 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_weather_ward_time_source
 --  is created now so both pairs can work against it immediately)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS risk_scores (
-    id              BIGSERIAL PRIMARY KEY,
-    ward_id         INTEGER NOT NULL REFERENCES wards(id) ON DELETE CASCADE,
-    score_time      TIMESTAMPTZ NOT NULL,
-    is_forecast     BOOLEAN DEFAULT FALSE,
-    heat_index_c    NUMERIC(5,2),
-    wbgt_c          NUMERIC(5,2),
-    utci_c          NUMERIC(5,2),
-    risk_band       VARCHAR(20),                    -- 'low' | 'moderate' | 'high' | 'extreme'
-    risk_score_raw  NUMERIC(6,3),                    -- underlying weighted numeric score
-    computed_at     TIMESTAMPTZ DEFAULT now()
+    id                  BIGSERIAL PRIMARY KEY,
+    ward_id             INTEGER NOT NULL REFERENCES wards(id) ON DELETE CASCADE,
+    score_time          TIMESTAMPTZ NOT NULL,
+    is_forecast         BOOLEAN DEFAULT FALSE,
+    heat_index_c        NUMERIC(5,2),
+    wbgt_c              NUMERIC(5,2),
+    utci_c              NUMERIC(5,2),
+    risk_band           VARCHAR(20),                    -- 'low' | 'moderate' | 'high' | 'extreme'
+    risk_score_raw      NUMERIC(6,3),                    -- underlying weighted numeric score
+    vulnerability_score NUMERIC(5,2),                    -- demographic vulnerability score (0-100)
+    final_risk_score    NUMERIC(6,3),                    -- vulnerability-adjusted composite risk score
+    final_risk_band     VARCHAR(20),                    -- vulnerability-adjusted risk band
+    computed_at         TIMESTAMPTZ DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_risk_ward_time ON risk_scores (ward_id, score_time DESC);
@@ -81,7 +84,9 @@ CREATE TABLE IF NOT EXISTS alerts_log (
     risk_band       VARCHAR(20),
     channel         VARCHAR(20),                    -- 'sms' | 'whatsapp' | 'webhook'
     message         TEXT,
-    status          VARCHAR(20) DEFAULT 'pending'    -- 'sent' | 'failed' | 'pending'
+    status          VARCHAR(20) DEFAULT 'pending',   -- 'sent' | 'failed' | 'pending'
+    risk_score_id   BIGINT REFERENCES risk_scores(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_alerts_ward ON alerts_log (ward_id, triggered_at DESC);
+CREATE INDEX IF NOT EXISTS idx_alerts_risk_score ON alerts_log (risk_score_id);

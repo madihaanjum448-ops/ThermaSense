@@ -279,6 +279,77 @@ def calculate_forecast_risk(
         wbgt_c,
         utci_c,
     )
+        # --------------------------------------------------
+    # Vulnerability-weighted risk
+    # --------------------------------------------------
+
+    with engine.connect() as conn:
+        ward_row = conn.execute(
+            text(
+                """
+                SELECT
+                    elderly_pct,
+                    outdoor_worker_pct,
+                    slum_household_pct,
+                    green_cover_pct
+                FROM wards
+                WHERE id = :ward_id
+                """
+            ),
+            {
+                "ward_id": forecast_row["ward_id"]
+            },
+        ).fetchone()
+
+    if ward_row:
+        elderly_pct = float(ward_row.elderly_pct or 0)
+        outdoor_worker_pct = float(
+            ward_row.outdoor_worker_pct or 0
+        )
+        slum_household_pct = float(
+            ward_row.slum_household_pct or 0
+        )
+        green_cover_pct = float(
+            ward_row.green_cover_pct or 0
+        )
+    else:
+        elderly_pct = 0.0
+        outdoor_worker_pct = 0.0
+        slum_household_pct = 0.0
+        green_cover_pct = 0.0
+
+    # Vulnerability score: 0–100
+    vulnerability_score = round(
+        (
+            0.30 * elderly_pct
+            + 0.30 * outdoor_worker_pct
+            + 0.25 * slum_household_pct
+            + 0.15 * (100.0 - green_cover_pct)
+        ),
+        2,
+    )
+
+    vulnerability_score = max(
+        0.0,
+        min(100.0, vulnerability_score)
+    )
+
+    # Combine thermal risk and vulnerability.
+    final_risk_score = round(
+        0.70 * score
+        + 0.30 * vulnerability_score,
+        3,
+    )
+
+    # Final risk band
+    if final_risk_score >= 80:
+        final_risk_band = "extreme"
+    elif final_risk_score >= 60:
+        final_risk_band = "high"
+    elif final_risk_score >= 35:
+        final_risk_band = "moderate"
+    else:
+        final_risk_band = "low"
 
     return {
         "ward_id": forecast_row["ward_id"],
@@ -307,6 +378,11 @@ def calculate_forecast_risk(
         "risk_score_raw": score,
 
         "risk_band": band,
+        "vulnerability_score": vulnerability_score,
+
+        "final_risk_score": final_risk_score,
+
+        "final_risk_band": final_risk_band,
 
         "solar_radiation_wm2_used": None,
 
@@ -351,12 +427,15 @@ def save_forecast_risk(
                 """
                 UPDATE risk_scores
                 SET
-                    heat_index_c = :heat_index_c,
-                    wbgt_c = :wbgt_c,
-                    utci_c = :utci_c,
-                    risk_band = :risk_band,
-                    risk_score_raw = :risk_score_raw,
-                    computed_at = :computed_at
+                  heat_index_c = :heat_index_c,
+                  wbgt_c = :wbgt_c,
+                  utci_c = :utci_c,
+                  risk_band = :risk_band,
+                  risk_score_raw = :risk_score_raw,
+                  vulnerability_score = :vulnerability_score,
+                  final_risk_score = :final_risk_score,
+                  final_risk_band = :final_risk_band,
+                  computed_at = :computed_at
                 WHERE ward_id = :ward_id
                   AND score_time = :score_time
                   AND is_forecast = TRUE
@@ -370,6 +449,9 @@ def save_forecast_risk(
                 "utci_c": result["utci_c"],
                 "risk_band": result["risk_band"],
                 "risk_score_raw": result["risk_score_raw"],
+                "vulnerability_score": result["vulnerability_score"],
+                "final_risk_score": result["final_risk_score"],
+                "final_risk_band": result["final_risk_band"],
                 "computed_at": datetime.now(
                     timezone.utc
                 ),
@@ -385,46 +467,54 @@ def save_forecast_risk(
             conn.execute(
                 text(
                     """
-                    INSERT INTO risk_scores
-                        (
-                            ward_id,
-                            score_time,
-                            is_forecast,
-                            heat_index_c,
-                            wbgt_c,
-                            utci_c,
-                            risk_band,
-                            risk_score_raw,
-                            computed_at
-                        )
-                    VALUES
-                        (
-                            :ward_id,
-                            :score_time,
-                            :is_forecast,
-                            :heat_index_c,
-                            :wbgt_c,
-                            :utci_c,
-                            :risk_band,
-                            :risk_score_raw,
-                            :computed_at
-                        )
-                    """
-                ),
-                {
-                    "ward_id": result["ward_id"],
-                    "score_time": result["score_time"],
-                    "is_forecast": True,
-                    "heat_index_c": result["heat_index_c"],
-                    "wbgt_c": result["wbgt_c"],
-                    "utci_c": result["utci_c"],
-                    "risk_band": result["risk_band"],
-                    "risk_score_raw": result["risk_score_raw"],
-                    "computed_at": datetime.now(
-                        timezone.utc
-                    ),
-                },
+                    
+        INSERT INTO risk_scores
+            (
+                ward_id,
+                score_time,
+                is_forecast,
+                heat_index_c,
+                wbgt_c,
+                utci_c,
+                risk_band,
+                risk_score_raw,
+                vulnerability_score,
+                final_risk_score,
+                final_risk_band,
+                computed_at
             )
+        VALUES
+            (
+                :ward_id,
+                :score_time,
+                :is_forecast,
+                :heat_index_c,
+                :wbgt_c,
+                :utci_c,
+                :risk_band,
+                :risk_score_raw,
+                :vulnerability_score,
+                :final_risk_score,
+                :final_risk_band,
+                :computed_at
+            )
+        """
+    ),
+    {
+        "ward_id": result["ward_id"],
+        "score_time": result["score_time"],
+        "is_forecast": True,
+        "heat_index_c": result["heat_index_c"],
+        "wbgt_c": result["wbgt_c"],
+        "utci_c": result["utci_c"],
+        "risk_band": result["risk_band"],
+        "risk_score_raw": result["risk_score_raw"],
+        "vulnerability_score": result["vulnerability_score"],
+        "final_risk_score": result["final_risk_score"],
+        "final_risk_band": result["final_risk_band"],
+        "computed_at": datetime.now(timezone.utc),
+    },
+)
 
 
 def run_forecast_for_ward(

@@ -69,6 +69,20 @@ def get_wards(city: str | None = None):
             params["city"] = city
         return [dict(row._mapping) for row in conn.execute(text(query), params)]
 
+def get_ward_demographics(ward_id: int):
+    """Return a ward's vulnerability-relevant demographics for risk weighting."""
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("""
+                SELECT elderly_pct, outdoor_worker_pct,
+                       slum_household_pct, green_cover_pct
+                FROM wards
+                WHERE id = :ward_id
+            """),
+            {"ward_id": ward_id},
+        ).fetchone()
+        return dict(row._mapping) if row else None
+
 
 def insert_ward(name: str, city: str, lat: float, lon: float,
                  population: int = None, elderly_pct: float = None,
@@ -148,3 +162,5 @@ def latest_reading(ward_id: int, source: str | None = None):
         query += " ORDER BY reading_time DESC LIMIT 1"
         row = conn.execute(text(query), params).fetchone()
         return dict(row._mapping) if row else None
+
+metadata.create_all(engine)

@@ -28,6 +28,7 @@ from datetime import datetime, timezone
 from sqlalchemy import text
 
 from db import engine, latest_reading
+from backend.app.derivation import derive_thermal_inputs
 
 try:
     from pythermalcomfort.models import heat_index_lu, wbgt, utci
@@ -192,19 +193,33 @@ def calculate_thermal_risk(ward_id: int) -> dict:
     solar_time, solar = _latest_solar_for_ward(ward_id)
 
     if _finite(solar):
-        globe_c = _estimate_globe_temperature(tdb, wind, solar)
-        tr_c = float(
-            mean_radiant_tmp(
-                tg=globe_c,
-                tdb=tdb,
-                v=wind,
-                d=GLOBE_DIAMETER_M,
-                emissivity=EMISSIVITY,
-                standard="ISO",
-            )
+        # Retrieve coordinates from database for the Liljegren solver
+        with engine.connect() as conn:
+            ward_row = conn.execute(
+                text("SELECT centroid_lat, centroid_lon FROM wards WHERE id = :ward_id"),
+                {"ward_id": ward_id}
+            ).fetchone()
+        if not ward_row:
+            raise ValueError(f"Ward {ward_id} not found in database")
+        lat = float(ward_row._mapping["centroid_lat"])
+        lon = float(ward_row._mapping["centroid_lon"])
+
+        # Call the validated Liljegren derivation (which uses calibrated ground albedo 0.15)
+        derived = derive_thermal_inputs(
+            temp_c=tdb,
+            humidity=rh,
+            wind_ms=wind,
+            solar_rad=solar,
+            timestamp=reading["reading_time"].isoformat(),
+            latitude=lat,
+            longitude=lon
         )
+        twb_natural = derived["twb_natural"]
+        globe_c = derived["tg"]
+        tr_c = derived["tr"]
+
         wbgt_result = wbgt(
-            twb=twb,
+            twb=twb_natural,
             tg=globe_c,
             tdb=tdb,
             with_solar_load=True,

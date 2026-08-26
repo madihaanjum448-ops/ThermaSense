@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, HTTPException
 from pythermalcomfort.models import heat_index_rothfusz, wbgt, utci
 import math
 from .derivation import derive_thermal_inputs
@@ -16,6 +16,12 @@ def get_heat_index(
     - tdb: dry-bulb temperature (°C)
     - rh: relative humidity (%)
     """
+    if tdb < -10.0 or tdb > 60.0:
+        raise HTTPException(
+            status_code=422,
+            detail="Dry-bulb temperature (tdb) must be between -10°C and 60°C"
+        )
+    rh = max(0.0, min(100.0, rh))
     result = heat_index_rothfusz(tdb=tdb, rh=rh)
     return {"heat_index": result.hi}
 
@@ -33,6 +39,12 @@ def get_wbgt(
     - tg: globe temperature (°C) (must be derived if not available)
     - tdb: dry-bulb temperature (°C) (optional, but required if with_solar_load=True)
     """
+    if tdb is not None:
+        if tdb < -10.0 or tdb > 60.0:
+            raise HTTPException(
+                status_code=422,
+                detail="Dry-bulb temperature (tdb) must be between -10°C and 60°C"
+            )
     result = wbgt(twb=twb, tg=tg, tdb=tdb, with_solar_load=with_solar_load)
     return {"wbgt": result.wbgt}
 
@@ -51,6 +63,17 @@ def get_utci(
     - v: wind speed at 10m height (m/s)
     - rh: relative humidity (%)
     """
+    if tdb < -10.0 or tdb > 60.0:
+        raise HTTPException(
+            status_code=422,
+            detail="Dry-bulb temperature (tdb) must be between -10°C and 60°C"
+        )
+    if v < 0.0:
+        raise HTTPException(
+            status_code=422,
+            detail="Wind speed (v) cannot be negative"
+        )
+    rh = max(0.0, min(100.0, rh))
     result = utci(tdb=tdb, tr=tr, v=v, rh=rh)
     return {
         "utci": result.utci,
@@ -72,6 +95,18 @@ def get_derive_all(
     Takes raw weather data, derives Tnwb, Tg, and Tr using the Liljegren (2008) method,
     then calculates Heat Index, WBGT, and UTCI.
     """
+    if temp_c < -10.0 or temp_c > 60.0:
+        raise HTTPException(
+            status_code=422,
+            detail="Air temperature (temp_c) must be between -10°C and 60°C"
+        )
+    if wind_ms < 0.0:
+        raise HTTPException(
+            status_code=422,
+            detail="Wind speed (wind_ms) cannot be negative"
+        )
+    humidity = max(0.0, min(100.0, humidity))
+
     derived = derive_thermal_inputs(
         temp_c=temp_c,
         humidity=humidity,

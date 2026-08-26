@@ -93,7 +93,7 @@ def run_live():
         temp_c=current["temp_c"],
         humidity_pct=current["humidity_pct"],
         wind_speed_ms=current["wind_speed_ms"],
-        solar_radiation_wm2=solar,
+        solar_radiation_wm2=solar["value"] if solar else None,
         is_forecast=False,
         raw_payload=weather.get("raw"),
     )

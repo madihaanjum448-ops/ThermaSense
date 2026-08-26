@@ -32,7 +32,8 @@ from tenacity import (
 load_dotenv(override=True)
 
 
-OPEN_METEO_URL = (
+OPEN_METEO_URL = os.environ.get(
+    "OPEN_METEO_URL",
     "https://api.open-meteo.com/v1/forecast"
 )
 

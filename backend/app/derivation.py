@@ -1,0 +1,140 @@
+import math
+from datetime import datetime
+import numpy as np
+
+from .liljegren import solve_globe, solve_wetbulb, wind_speed_2m, kelvin_to_celsius, celsius_to_kelvin
+from pythermalcomfort.utilities import mean_radiant_tmp
+
+def calculate_solar_geometry_and_fraction(dt_utc: datetime, lat: float, lon: float, ghi: float):
+    """
+    Calculates the cosine of the solar zenith angle and the direct beam fraction (fdir)
+    using the NOAA solar position algorithms and the Erbs et al. (1982) model to partition GHI.
+    """
+    # 1. Solar Zenith Angle calculation
+    n = dt_utc.timetuple().tm_yday
+    # Fractional year in radians
+    gamma = 2 * math.pi / 365.0 * (n - 1.0 + (dt_utc.hour - 12.0) / 24.0)
+
+    # Equation of time in minutes
+    eqtime = 229.18 * (0.000075 + 0.001868 * math.cos(gamma) - 0.032077 * math.sin(gamma)
+                       - 0.014615 * math.cos(2 * gamma) - 0.040849 * math.sin(2 * gamma))
+
+    # Solar declination in radians
+    decl = 0.006918 - 0.399912 * math.cos(gamma) + 0.070257 * math.sin(gamma) \
+           - 0.006758 * math.cos(2 * gamma) + 0.000907 * math.sin(2 * gamma) \
+           - 0.002697 * math.cos(3 * gamma) + 0.00148 * math.sin(3 * gamma)
+
+    time_offset = eqtime + 4.0 * lon
+    tst = dt_utc.hour * 60.0 + dt_utc.minute + dt_utc.second / 60.0 + time_offset
+    ha_rad = math.radians((tst / 4.0) - 180.0)
+    lat_rad = math.radians(lat)
+
+    cossza = math.sin(lat_rad) * math.sin(decl) + math.cos(lat_rad) * math.cos(decl) * math.cos(ha_rad)
+    cossza = max(cossza, -1.0)
+    cossza = min(cossza, 1.0)
+
+    # 2. Partition GHI into Direct and Diffuse using Erbs et al. (1982)
+    # Extraterrestrial radiation
+    I0 = 1367.0 * (1.0 + 0.033 * math.cos(2 * math.pi * n / 365.0))
+    G_ext = I0 * cossza
+
+    if cossza <= 0 or G_ext <= 0 or ghi <= 0:
+        fdir = 0.0
+    else:
+        kt = ghi / G_ext
+        if kt <= 0.22:
+            kd = 1.0 - 0.09 * kt
+        elif kt <= 0.8:
+            kd = 0.9511 - 0.1604 * kt + 4.388 * (kt**2) - 16.638 * (kt**3) + 12.336 * (kt**4)
+        else:
+            kd = 0.165
+
+        kd = max(0.0, min(kd, 1.0))
+        fdir = 1.0 - kd
+
+    return cossza, fdir
+
+def derive_thermal_inputs(
+    temp_c: float,
+    humidity: float,
+    wind_ms: float,
+    solar_rad: float,
+    timestamp: str,
+    latitude: float,
+    longitude: float,
+    pressure_hpa: float = None
+):
+    """
+    Derives natural wet-bulb temperature (Tnwb), globe temperature (Tg),
+    and mean radiant temperature (Tr) using the Liljegren 2008 model.
+    """
+    if timestamp.endswith("Z"):
+        dt_utc = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+    else:
+        dt_utc = datetime.fromisoformat(timestamp)
+
+    # Assume UTC if no timezone info is present
+    if dt_utc.tzinfo is None:
+        raise ValueError("Timestamp must include timezone information (e.g. UTC 'Z' or offset).")
+
+    # Assumptions/Defaults
+    if pressure_hpa is None:
+        # Standard sea-level pressure assumption if not provided
+        pressure_hpa = 1013.25
+
+    cossza, fdir = calculate_solar_geometry_and_fraction(dt_utc, latitude, longitude, solar_rad)
+
+    # Thermofeel / Liljegren inputs expect numpy arrays
+    t_k = celsius_to_kelvin(temp_c)
+    rh_frac = humidity / 100.0
+
+    # Wind speed scaling from 10m to 2m using Liljegren atmospheric stability profile
+    wind_2m = float(wind_speed_2m(wind_ms, cossza, solar_rad))
+
+    # Liljegren expects pressure in hPa
+    pair_hpa = pressure_hpa
+
+    # Solve Globe
+    tg_c = solve_globe(
+        ta=t_k,
+        rh=rh_frac,
+        pair=pair_hpa,
+        speed=wind_2m,
+        solar=solar_rad,
+        fdir=fdir,
+        cza=cossza
+    )
+
+    # Solve Wetbulb
+    twb_natural_c = solve_wetbulb(
+        ta=t_k,
+        rh=rh_frac,
+        pair=pair_hpa,
+        speed=wind_2m,
+        solar=solar_rad,
+        fdir=fdir,
+        cza=cossza,
+        rad=1.0 # 1.0 indicates natural wet bulb (exposed to radiation)
+    )
+
+    # Derive Mean Radiant Temperature using pythermalcomfort (ISO 7726 formulation)
+    tg_val = float(tg_c)
+    twb_val = float(twb_natural_c)
+
+    tr_val = mean_radiant_tmp(
+        tg=tg_val,
+        tdb=temp_c,
+        v=wind_2m, # Wind speed at globe height
+        d=0.0508, # Liljegren 2-inch (50.8mm) standard globe diameter
+        emissivity=0.95, # Standard globe emissivity assumption
+        standard='ISO'
+    )
+
+    return {
+        "twb_natural": twb_val,
+        "tg": tg_val,
+        "tr": float(tr_val),
+        "fdir": fdir,
+        "cossza": cossza,
+        "wind_2m": wind_2m
+    }

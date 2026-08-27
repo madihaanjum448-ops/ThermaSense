@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 
 from .thermal import router as thermal_router
 from .wards import router as wards_router
@@ -22,3 +22,17 @@ app.include_router(
 @app.get("/")
 def read_root():
     return {"status": "ok"}
+
+
+@app.post("/webhook")
+async def receive_webhook(request: Request):
+    payload = await request.json()
+
+    print("\n========== WEBHOOK RECEIVED ==========")
+    print(payload)
+    print("======================================\n")
+
+    return {
+        "received": True,
+        "message": "Webhook received successfully",
+    }

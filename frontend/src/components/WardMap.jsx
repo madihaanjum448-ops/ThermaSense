@@ -1,5 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, GeoJSON } from 'react-leaflet';
+import {
+  MapContainer,
+  TileLayer,
+  GeoJSON,
+  useMap
+} from 'react-leaflet';
 
 const DUMMY_WARDS_GEOJSON = {
   type: 'FeatureCollection',
@@ -97,11 +102,39 @@ const getRiskColor = (riskBand) => {
   }
 };
 
+function FitMapToGeoJSON({ geoData }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (
+      geoData &&
+      geoData.features &&
+      geoData.features.length > 0
+    ) {
+      const geoJsonLayer = new window.L.GeoJSON(geoData);
+      const bounds = geoJsonLayer.getBounds();
+
+      if (bounds.isValid()) {
+        map.fitBounds(bounds, {
+          padding: [40, 40],
+          maxZoom: 13
+        });
+      }
+    }
+  }, [geoData, map]);
+
+  return null;
+}
+
 export default function WardMap() {
   const [geoData, setGeoData] = useState(null);
   const [statusMsg, setStatusMsg] = useState(
     'Loading ward risk data...'
   );
+
+  const [forecastByWard, setForecastByWard] = useState({});
+  const [forecastLoadingWard, setForecastLoadingWard] =
+    useState(null);
 
   useEffect(() => {
     fetch('/api/wards/geojson')
@@ -124,6 +157,7 @@ export default function WardMap() {
           console.warn(
             'API returned empty features, using fallback dummy wards.'
           );
+
           setGeoData(DUMMY_WARDS_GEOJSON);
           setStatusMsg(
             'No live wards found. Displaying fallback demo data.'
@@ -135,12 +169,246 @@ export default function WardMap() {
           'Fetch failed, using fallback dummy wards:',
           err
         );
+
         setGeoData(DUMMY_WARDS_GEOJSON);
         setStatusMsg(
           'Backend unavailable. Displaying fallback demo data.'
         );
       });
   }, []);
+
+  const loadForecast = async (wardId, layer) => {
+    if (!wardId) {
+      return;
+    }
+
+    /*
+     * Save the current popup content before replacing it
+     * temporarily with the forecast popup.
+     */
+    const currentPopupContent =
+      layer.getPopup()?.getContent();
+
+    setForecastLoadingWard(wardId);
+
+    try {
+      const response = await fetch(
+        `/api/wards/${wardId}/forecast`
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          `Forecast server returned ${response.status}`
+        );
+      }
+
+      const data = await response.json();
+
+      setForecastByWard((previous) => ({
+        ...previous,
+        [wardId]: data
+      }));
+
+      const forecastRows = data?.forecasts || [];
+
+      if (forecastRows.length === 0) {
+        layer.bindPopup(`
+          <div style="
+            font-family: sans-serif;
+            min-width: 220px;
+          ">
+            <strong>
+              No future forecast data available.
+            </strong>
+          </div>
+        `);
+
+        layer.openPopup();
+
+        layer.once('popupclose', () => {
+          if (currentPopupContent) {
+            layer.bindPopup(currentPopupContent);
+          }
+        });
+
+        return;
+      }
+
+      const forecastHtml = forecastRows
+        .slice(0, 6)
+        .map((forecast) => {
+          const time = forecast.score_time
+            ? new Date(
+                forecast.score_time
+              ).toLocaleString()
+            : 'Unknown time';
+
+          const riskBand =
+            forecast.final_risk_band ||
+            forecast.risk_band ||
+            'unknown';
+
+          const riskColor = getRiskColor(riskBand);
+
+          return `
+            <div style="
+              border-top: 1px solid #ddd;
+              padding: 7px 0;
+              margin-top: 5px;
+            ">
+              <div style="
+                font-size: 11px;
+                color: #666;
+                margin-bottom: 3px;
+              ">
+                ${time}
+              </div>
+
+              <div style="font-size: 12px;">
+                <strong>WBGT:</strong>
+                ${
+                  forecast.wbgt !== null &&
+                  forecast.wbgt !== undefined
+                    ? `${forecast.wbgt}°C`
+                    : 'N/A'
+                }
+              </div>
+
+              <div style="font-size: 12px;">
+                <strong>UTCI:</strong>
+                ${
+                  forecast.utci !== null &&
+                  forecast.utci !== undefined
+                    ? `${forecast.utci}°C`
+                    : 'N/A'
+                }
+              </div>
+
+              <div style="font-size: 12px;">
+                <strong>Heat Index:</strong>
+                ${
+                  forecast.heat_index !== null &&
+                  forecast.heat_index !== undefined
+                    ? `${forecast.heat_index}°C`
+                    : 'N/A'
+                }
+              </div>
+
+              <div style="margin-top: 3px;">
+                <strong style="font-size: 12px;">
+                  Risk:
+                </strong>
+
+                <span style="
+                  display: inline-block;
+                  margin-left: 4px;
+                  padding: 2px 6px;
+                  border-radius: 4px;
+                  color: #fff;
+                  background-color: ${riskColor};
+                  font-size: 11px;
+                  font-weight: bold;
+                  text-transform: uppercase;
+                ">
+                  ${riskBand}
+                </span>
+              </div>
+
+              <div style="font-size: 12px;">
+                <strong>Risk Score:</strong>
+                ${
+                  forecast.final_risk_score ??
+                  forecast.risk_score_raw ??
+                  'N/A'
+                }
+              </div>
+            </div>
+          `;
+        })
+        .join('');
+
+      const remaining =
+        forecastRows.length > 6
+          ? `
+            <div style="
+              font-size: 11px;
+              color: #777;
+              margin-top: 6px;
+            ">
+              Showing next 6 of
+              ${forecastRows.length}
+              forecast points.
+            </div>
+          `
+          : '';
+
+      layer.bindPopup(`
+        <div style="
+          font-family: sans-serif;
+          min-width: 250px;
+          max-width: 320px;
+          line-height: 1.4;
+        ">
+          <h4 style="
+            margin: 0 0 8px 0;
+            font-size: 15px;
+            color: #111;
+          ">
+            ${layer._thermaSenseWardName || 'Ward'}
+            — Forecast
+          </h4>
+
+          ${forecastHtml}
+
+          ${remaining}
+        </div>
+      `);
+
+      /*
+       * When the forecast popup is closed, restore the
+       * original current-risk popup.
+       */
+      layer.once('popupclose', () => {
+        if (currentPopupContent) {
+          layer.bindPopup(currentPopupContent);
+        }
+      });
+
+      layer.openPopup();
+    } catch (error) {
+      console.warn(
+        `Failed to load forecast for ward ${wardId}:`,
+        error
+      );
+
+      layer.bindPopup(`
+        <div style="
+          font-family: sans-serif;
+          min-width: 220px;
+          color: #991b1b;
+        ">
+          <strong>Forecast unavailable</strong>
+
+          <p style="
+            margin: 6px 0 0 0;
+            font-size: 12px;
+          ">
+            Could not load forecast data for this ward.
+          </p>
+        </div>
+      `);
+
+      layer.once('popupclose', () => {
+        if (currentPopupContent) {
+          layer.bindPopup(currentPopupContent);
+        }
+      });
+
+      layer.openPopup();
+    } finally {
+      setForecastLoadingWard(null);
+    }
+  };
 
   const styleFeature = (feature) => {
     const properties = feature.properties || {};
@@ -164,6 +432,7 @@ export default function WardMap() {
     const properties = feature.properties || {};
 
     const {
+      id,
       name,
       wbgt,
       utci,
@@ -176,6 +445,9 @@ export default function WardMap() {
       score_time
     } = properties;
 
+    layer._thermaSenseWardName =
+      name || 'Unnamed Ward';
+
     const displayRiskBand =
       final_risk_band ||
       risk_band ||
@@ -183,29 +455,32 @@ export default function WardMap() {
 
     const riskColor = getRiskColor(displayRiskBand);
 
+    const forecastButtonId =
+      `forecast-button-${id}`;
+
     const popupContent = `
-      <div
-        style="
-          font-family: sans-serif;
-          min-width: 210px;
-          line-height: 1.4;
-        "
-      >
-        <h4
-          style="
-            margin: 0 0 8px 0;
-            font-size: 15px;
-            color: #111;
-          "
-        >
+      <div style="
+        font-family: sans-serif;
+        min-width: 230px;
+        line-height: 1.4;
+      ">
+        <h4 style="
+          margin: 0 0 8px 0;
+          font-size: 15px;
+          color: #111;
+        ">
           ${name || 'Unnamed Ward'}
         </h4>
 
-        <div style="font-size: 13px; color: #444;">
+        <div style="
+          font-size: 13px;
+          color: #444;
+        ">
           <p style="margin: 3px 0;">
             <strong>WBGT:</strong>
             ${
-              wbgt !== null && wbgt !== undefined
+              wbgt !== null &&
+              wbgt !== undefined
                 ? `${wbgt}°C`
                 : 'N/A'
             }
@@ -214,7 +489,8 @@ export default function WardMap() {
           <p style="margin: 3px 0;">
             <strong>UTCI:</strong>
             ${
-              utci !== null && utci !== undefined
+              utci !== null &&
+              utci !== undefined
                 ? `${utci}°C`
                 : 'N/A'
             }
@@ -223,19 +499,18 @@ export default function WardMap() {
           <p style="margin: 3px 0;">
             <strong>Heat Index:</strong>
             ${
-              heat_index !== null && heat_index !== undefined
+              heat_index !== null &&
+              heat_index !== undefined
                 ? `${heat_index}°C`
                 : 'N/A'
             }
           </p>
 
-          <hr
-            style="
-              border: 0;
-              border-top: 1px solid #ddd;
-              margin: 8px 0;
-            "
-          />
+          <hr style="
+            border: 0;
+            border-top: 1px solid #ddd;
+            margin: 8px 0;
+          " />
 
           <p style="margin: 3px 0;">
             <strong>Thermal Risk:</strong>
@@ -269,17 +544,16 @@ export default function WardMap() {
 
           <p style="margin: 6px 0 0 0;">
             <strong>Final Risk Band:</strong>
-            <span
-              style="
-                display: inline-block;
-                padding: 2px 8px;
-                border-radius: 4px;
-                font-weight: bold;
-                text-transform: uppercase;
-                color: #fff;
-                background-color: ${riskColor};
-              "
-            >
+
+            <span style="
+              display: inline-block;
+              padding: 2px 8px;
+              border-radius: 4px;
+              font-weight: bold;
+              text-transform: uppercase;
+              color: #fff;
+              background-color: ${riskColor};
+            ">
               ${displayRiskBand}
             </span>
           </p>
@@ -287,14 +561,53 @@ export default function WardMap() {
           ${
             score_time
               ? `
-                <p
-                  style="
-                    margin: 8px 0 0 0;
-                    font-size: 11px;
-                    color: #777;
-                  "
-                >
+                <p style="
+                  margin: 8px 0 0 0;
+                  font-size: 11px;
+                  color: #777;
+                ">
                   Updated: ${score_time}
+                </p>
+              `
+              : ''
+          }
+
+          <button
+            id="${forecastButtonId}"
+            style="
+              width: 100%;
+              margin-top: 12px;
+              padding: 8px 10px;
+              border: 0;
+              border-radius: 5px;
+              background: #1e293b;
+              color: white;
+              cursor: pointer;
+              font-size: 12px;
+              font-weight: 600;
+            "
+          >
+            ${
+              forecastLoadingWard === id
+                ? 'Loading forecast...'
+                : 'View Forecast'
+            }
+          </button>
+
+          ${
+            forecastByWard[id]
+              ? `
+                <p style="
+                  margin: 6px 0 0 0;
+                  font-size: 10px;
+                  color: #777;
+                  text-align: center;
+                ">
+                  Forecast loaded:
+                  ${
+                    forecastByWard[id].count || 0
+                  }
+                  points
                 </p>
               `
               : ''
@@ -304,6 +617,18 @@ export default function WardMap() {
     `;
 
     layer.bindPopup(popupContent);
+
+    layer.on('popupopen', () => {
+      const button = document.getElementById(
+        forecastButtonId
+      );
+
+      if (button) {
+        button.onclick = () => {
+          loadForecast(id, layer);
+        };
+      }
+    });
   };
 
   return (
@@ -351,8 +676,8 @@ export default function WardMap() {
         }}
       >
         <MapContainer
-          center={[12.9716, 77.5946]}
-          zoom={11}
+          center={[20.5937, 78.9629]}
+          zoom={5}
           style={{
             height: '100%',
             width: '100%'
@@ -364,12 +689,18 @@ export default function WardMap() {
           />
 
           {geoData && (
-            <GeoJSON
-              key={JSON.stringify(geoData)}
-              data={geoData}
-              style={styleFeature}
-              onEachFeature={onEachFeature}
-            />
+            <>
+              <FitMapToGeoJSON
+                geoData={geoData}
+              />
+
+              <GeoJSON
+                key={JSON.stringify(geoData)}
+                data={geoData}
+                style={styleFeature}
+                onEachFeature={onEachFeature}
+              />
+            </>
           )}
         </MapContainer>
 
@@ -378,7 +709,8 @@ export default function WardMap() {
             position: 'absolute',
             bottom: '24px',
             right: '24px',
-            backgroundColor: 'rgba(255, 255, 255, 0.95)',
+            backgroundColor:
+              'rgba(255, 255, 255, 0.95)',
             padding: '12px 16px',
             borderRadius: '8px',
             boxShadow:

@@ -7,6 +7,10 @@ import json
 router = APIRouter()
 
 
+def _to_float(value):
+    return float(value) if value is not None else None
+
+
 @router.get("/wards/geojson")
 def get_wards_geojson():
     """
@@ -61,52 +65,20 @@ def get_wards_geojson():
                 "id": row.id,
                 "name": row.name,
                 "city": row.city,
-                "centroid_lat": (
-                    float(row.centroid_lat)
-                    if row.centroid_lat is not None
-                    else None
-                ),
-                "centroid_lon": (
-                    float(row.centroid_lon)
-                    if row.centroid_lon is not None
-                    else None
-                ),
-                "wbgt": (
-                    float(row.wbgt_c)
-                    if row.wbgt_c is not None
-                    else None
-                ),
-                "utci": (
-                    float(row.utci_c)
-                    if row.utci_c is not None
-                    else None
-                ),
-                "heat_index": (
-                    float(row.heat_index_c)
-                    if row.heat_index_c is not None
-                    else None
-                ),
+                "centroid_lat": _to_float(row.centroid_lat),
+                "centroid_lon": _to_float(row.centroid_lon),
+                "wbgt": _to_float(row.wbgt_c),
+                "utci": _to_float(row.utci_c),
+                "heat_index": _to_float(row.heat_index_c),
                 "risk_band": row.risk_band or "unknown",
-                "risk_score_raw": (
-                    float(row.risk_score_raw)
-                    if row.risk_score_raw is not None
-                    else None
+                "risk_score_raw": _to_float(row.risk_score_raw),
+                "vulnerability_score": _to_float(
+                    row.vulnerability_score
                 ),
-                "vulnerability_score": (
-                    float(row.vulnerability_score)
-                    if row.vulnerability_score is not None
-                    else None
+                "final_risk_score": _to_float(
+                    row.final_risk_score
                 ),
-                "final_risk_score": (
-                    float(row.final_risk_score)
-                    if row.final_risk_score is not None
-                    else None
-                ),
-                "final_risk_band": (
-                    row.final_risk_band
-                    if row.final_risk_band is not None
-                    else None
-                ),
+                "final_risk_band": row.final_risk_band,
                 "score_time": (
                     row.score_time.isoformat()
                     if row.score_time
@@ -118,4 +90,72 @@ def get_wards_geojson():
     return {
         "type": "FeatureCollection",
         "features": features,
+    }
+
+
+@router.get("/wards/{ward_id}/forecast")
+def get_ward_forecast(ward_id: int):
+    """
+    Return future forecast risk scores for one ward.
+
+    Only rows explicitly marked as forecast are returned.
+    Results are ordered chronologically.
+    """
+    query = text("""
+        SELECT
+            id,
+            ward_id,
+            score_time,
+            is_forecast,
+            wbgt_c,
+            utci_c,
+            heat_index_c,
+            risk_score_raw,
+            risk_band,
+            vulnerability_score,
+            final_risk_score,
+            final_risk_band
+        FROM risk_scores
+        WHERE ward_id = :ward_id
+          AND is_forecast = TRUE
+          AND score_time > NOW()
+        ORDER BY score_time ASC, id ASC
+    """)
+
+    with engine.connect() as conn:
+        rows = conn.execute(
+            query,
+            {"ward_id": ward_id},
+        ).fetchall()
+
+    forecasts = []
+
+    for row in rows:
+        forecasts.append({
+            "id": row.id,
+            "ward_id": row.ward_id,
+            "score_time": (
+                row.score_time.isoformat()
+                if row.score_time
+                else None
+            ),
+            "is_forecast": bool(row.is_forecast),
+            "wbgt": _to_float(row.wbgt_c),
+            "utci": _to_float(row.utci_c),
+            "heat_index": _to_float(row.heat_index_c),
+            "risk_score_raw": _to_float(row.risk_score_raw),
+            "risk_band": row.risk_band or "unknown",
+            "vulnerability_score": _to_float(
+                row.vulnerability_score
+            ),
+            "final_risk_score": _to_float(
+                row.final_risk_score
+            ),
+            "final_risk_band": row.final_risk_band,
+        })
+
+    return {
+        "ward_id": ward_id,
+        "count": len(forecasts),
+        "forecasts": forecasts,
     }

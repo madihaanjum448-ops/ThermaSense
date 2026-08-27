@@ -46,3 +46,6 @@ venv.bak/
 # OS files
 .DS_Store
 Thumbs.db
+venv_new/
+node_modules/
+

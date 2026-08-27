@@ -6,6 +6,8 @@ hackathon, and Pair B's FastAPI service can import these same helpers
 directly instead of writing its own DB layer.
 """
 
+from __future__ import annotations
+
 import os
 import json
 from datetime import datetime, timezone

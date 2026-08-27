@@ -1,17 +1,8 @@
-# Environment variables / secrets
-.env
-.env.*
-
-# Python cache
+# Python
 __pycache__/
-*.py[codz]
+*.py[cod]
 *$py.class
-*.pyo
-
-# C extensions
 *.so
-
-# Distribution / packaging
 .Python
 build/
 develop-eggs/
@@ -32,17 +23,43 @@ share/python-wheels/
 MANIFEST
 
 # Virtual environments
-venv/
 .venv/
+venv/
 env/
 ENV/
-env.bak/
-venv.bak/
 
-# IDE files
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# IDEs
 .vscode/
 .idea/
 
 # OS files
 .DS_Store
 Thumbs.db
+
+# Logs
+*.log
+
+# Database / local data
+*.sqlite
+*.sqlite3
+
+# Node / frontend
+node_modules/
+frontend/dist/
+
+# Temporary files
+*.tmp
+*.temp
+temp_package.json

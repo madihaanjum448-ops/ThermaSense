@@ -38,15 +38,17 @@ try:
     indices = res["indices"]
     
     # Assertions with tolerances
-    # Under ALB_SFC = 0.15, solar_rad = 800.0 W/m² with Bird & Hulstrom humidity attenuation:
-    # tau_w = 0.964, effective_solar_rad = 771.5 W/m²
-    # twb_natural = 25.20 °C, tg = 42.69 °C, tr = 80.3 °C, wbgt = 29.4 °C (84.92 °F)
-    # The output WBGT of 29.4°C is only +0.51°C (+0.92°F) from the NWS 84.0°F reference.
-    
-    assert abs(indices["wbgt"] - 29.4) < 0.15, f"Expected WBGT around 29.4, got {indices['wbgt']}"
-    assert abs(derived["twb_natural"] - 25.20) < 0.15, f"Expected twb_natural around 25.20, got {derived['twb_natural']}"
-    assert abs(derived["tg"] - 42.69) < 0.15, f"Expected tg around 42.69, got {derived['tg']}"
-    assert abs(derived["tr"] - 80.3) < 0.5, f"Expected tr around 80.3, got {derived['tr']}"
+    # Under ALB_SFC = 0.20 (Dimiceli, Piltz & Johnson 2011, NWS grass surface), solar_rad = 800.0 W/m2
+    # with Bird & Hulstrom humidity attenuation:
+    # tau_w = 0.964, effective_solar_rad = 771.5 W/m2
+    # twb_natural = 25.31 C, tg = 43.35 C, tr = 82.7 C, wbgt = 29.6 C (85.28 F)
+    # The output WBGT of 29.6C is +0.71C (+1.28F) from the NWS 84.0F reference.
+    # (Previously ALB_SFC=0.15, an uncited value tuned to minimize Case A delta, gave wbgt=29.4.)
+
+    assert abs(indices["wbgt"] - 29.6) < 0.15, f"Expected WBGT around 29.6, got {indices['wbgt']}"
+    assert abs(derived["twb_natural"] - 25.31) < 0.15, f"Expected twb_natural around 25.31, got {derived['twb_natural']}"
+    assert abs(derived["tg"] - 43.35) < 0.15, f"Expected tg around 43.35, got {derived['tg']}"
+    assert abs(derived["tr"] - 82.7) < 0.5, f"Expected tr around 82.7, got {derived['tr']}"
     
     print("\nDERIVATION VERIFICATION PASSED - Calculations match NWS Tulsa simulator reference values!")
     

@@ -88,7 +88,8 @@ EMIS_GLOBE = 0.95
 ALB_GLOBE = 0.05
 D_GLOBE = 0.0508  # globe diameter [m]
 EMIS_SFC = 0.999
-ALB_SFC = 0.15
+ALB_SFC = 0.20  # Dimiceli, Piltz & Johnson (2011), NWS Tulsa WFO - grass surface (alpha_es).
+                # Replaces uncited 0.15 (commit 3fa7838), tuned to minimize Case A delta.
 CZA_MIN = 0.00873  # cos(89.5 deg): below this the sun is treated as down
 MIN_SPEED = 0.13  # internal floor on wind speed in the Reynolds number [m/s]
 CONVERGENCE = 0.02  # iteration tolerance [K]

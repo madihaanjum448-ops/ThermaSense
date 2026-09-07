@@ -26,11 +26,6 @@ params = {
     "pressure_hpa": 1013.25
 }
 
-# INFORMAL COMPARISON (Exploratory, not validated):
-# During calibration scanning, we found that passing a GHI of 480.0 W/m² 
-# (accounting for standard atmospheric transmission loss in the NWS calculator)
-# yields a model WBGT of exactly 29.1°C (84.4°F), matching the simulator 
-# output of 84.0°F precisely.
 
 print("Running derive_all endpoint test with 800 W/m² full-sun reference case...")
 try:
@@ -43,15 +38,15 @@ try:
     indices = res["indices"]
     
     # Assertions with tolerances
-    # Under ALB_SFC = 0.15 and solar_rad = 800.0 W/m², the model outputs:
-    # twb_natural = 25.18 °C, tg = 42.88 °C, tr = 81.0 °C, wbgt = 29.4 °C (84.92 °F)
+    # Under ALB_SFC = 0.15, solar_rad = 800.0 W/m² with Bird & Hulstrom humidity attenuation:
+    # tau_w = 0.964, effective_solar_rad = 771.5 W/m²
+    # twb_natural = 25.20 °C, tg = 42.69 °C, tr = 80.3 °C, wbgt = 29.4 °C (84.92 °F)
     # The output WBGT of 29.4°C is only +0.51°C (+0.92°F) from the NWS 84.0°F reference.
-    # By contrast, ALB_SFC = 0.25 outputs 29.9°C (85.8°F), showing a delta of +1.01°C.
     
     assert abs(indices["wbgt"] - 29.4) < 0.15, f"Expected WBGT around 29.4, got {indices['wbgt']}"
-    assert abs(derived["twb_natural"] - 25.18) < 0.15, f"Expected twb_natural around 25.18, got {derived['twb_natural']}"
-    assert abs(derived["tg"] - 42.88) < 0.15, f"Expected tg around 42.88, got {derived['tg']}"
-    assert abs(derived["tr"] - 81.0) < 0.5, f"Expected tr around 81.0, got {derived['tr']}"
+    assert abs(derived["twb_natural"] - 25.20) < 0.15, f"Expected twb_natural around 25.20, got {derived['twb_natural']}"
+    assert abs(derived["tg"] - 42.69) < 0.15, f"Expected tg around 42.69, got {derived['tg']}"
+    assert abs(derived["tr"] - 80.3) < 0.5, f"Expected tr around 80.3, got {derived['tr']}"
     
     print("\nDERIVATION VERIFICATION PASSED - Calculations match NWS Tulsa simulator reference values!")
     

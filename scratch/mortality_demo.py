@@ -337,7 +337,7 @@ def run_mode_3_accuracy():
             "solar": f"{ac['solar']:.0f}W/m²",
             "wbgt": f"{res['wbgt_c']:.2f}°C",
             "utci": f"{res['utci_c']:.1f}°C",
-            "band": res["final_risk_band"].upper(),
+            "band": res["risk_band"].upper(),
             "rr": f"{res['relative_risk']:.4f}",
             "excess": f"+{res['excess_mortality_pct']:.2f}%",
             "target": ac["target"],
@@ -372,7 +372,7 @@ def run_mode_3_accuracy():
             "solar": f"{solar_wm2:.0f}W/m²",
             "wbgt": f"{res['wbgt_c']:.2f}°C",
             "utci": f"{res['utci_c']:.1f}°C",
-            "band": res["final_risk_band"].upper(),
+            "band": res["risk_band"].upper(),
             "rr": f"{res['relative_risk']:.4f}",
             "excess": f"+{res['excess_mortality_pct']:.2f}%",
             "target": "Live Real-Time",
@@ -381,6 +381,8 @@ def run_mode_3_accuracy():
         })
 
     # Print Table
+    print("\n[Data Source: Open-Meteo live weather via fetch_weather.py + Real-Time Astronomical Solar GHI]")
+    print("[Band Logic: Pulled directly from calculate_thermal_risk()['risk_band'] -> max(WBGT-band, UTCI-band, score-band)]\n")
     header = f"{'Scenario / City':36s} | {'Tdb':7s} | {'RH':5s} | {'Solar':8s} | {'WBGT':9s} | {'UTCI':7s} | {'Band':9s} | {'RR':6s} | {'Excess %':9s} | {'Mort Index':10s} | {'Benchmark / CI':20s} | {'Status':6s}"
     print(header)
     print("-" * len(header))

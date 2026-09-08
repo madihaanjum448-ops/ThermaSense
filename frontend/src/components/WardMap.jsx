@@ -3,7 +3,7 @@ import {
   MapContainer,
   TileLayer,
   GeoJSON,
-  useMap
+  useMap,
 } from 'react-leaflet';
 
 const DUMMY_WARDS_GEOJSON = {
@@ -19,20 +19,18 @@ const DUMMY_WARDS_GEOJSON = {
         risk_band: 'extreme',
         final_risk_band: 'extreme',
         final_risk_score: 85.2,
-        vulnerability_score: 42.1
+        vulnerability_score: 42.1,
       },
       geometry: {
         type: 'Polygon',
-        coordinates: [
-          [
-            [77.585, 12.975],
-            [77.615, 12.975],
-            [77.615, 12.995],
-            [77.585, 12.995],
-            [77.585, 12.975]
-          ]
-        ]
-      }
+        coordinates: [[
+          [77.585, 12.975],
+          [77.615, 12.975],
+          [77.615, 12.995],
+          [77.585, 12.995],
+          [77.585, 12.975],
+        ]],
+      },
     },
     {
       type: 'Feature',
@@ -44,20 +42,18 @@ const DUMMY_WARDS_GEOJSON = {
         risk_band: 'high',
         final_risk_band: 'high',
         final_risk_score: 61.393,
-        vulnerability_score: 24.39
+        vulnerability_score: 24.39,
       },
       geometry: {
         type: 'Polygon',
-        coordinates: [
-          [
-            [77.610, 12.920],
-            [77.640, 12.920],
-            [77.640, 12.945],
-            [77.610, 12.945],
-            [77.610, 12.920]
-          ]
-        ]
-      }
+        coordinates: [[
+          [77.610, 12.920],
+          [77.640, 12.920],
+          [77.640, 12.945],
+          [77.610, 12.945],
+          [77.610, 12.920],
+        ]],
+      },
     },
     {
       type: 'Feature',
@@ -69,36 +65,34 @@ const DUMMY_WARDS_GEOJSON = {
         risk_band: 'moderate',
         final_risk_band: 'moderate',
         final_risk_score: 38.5,
-        vulnerability_score: 20.0
+        vulnerability_score: 20.0,
       },
       geometry: {
         type: 'Polygon',
-        coordinates: [
-          [
-            [77.555, 12.990],
-            [77.580, 12.990],
-            [77.580, 13.015],
-            [77.555, 13.015],
-            [77.555, 12.990]
-          ]
-        ]
-      }
-    }
-  ]
+        coordinates: [[
+          [77.555, 12.990],
+          [77.580, 12.990],
+          [77.580, 13.015],
+          [77.555, 13.015],
+          [77.555, 12.990],
+        ]],
+      },
+    },
+  ],
 };
 
 const getRiskColor = (riskBand) => {
   switch (riskBand?.toLowerCase()) {
     case 'low':
-      return '#22c55e';
+      return '#5f806d';
     case 'moderate':
-      return '#eab308';
+      return '#b88945';
     case 'high':
-      return '#f97316';
+      return '#c9633f';
     case 'extreme':
-      return '#ef4444';
+      return '#963d2f';
     default:
-      return '#9ca3af';
+      return '#8b8982';
   }
 };
 
@@ -117,7 +111,7 @@ function FitMapToGeoJSON({ geoData }) {
       if (bounds.isValid()) {
         map.fitBounds(bounds, {
           padding: [40, 40],
-          maxZoom: 13
+          maxZoom: 13,
         });
       }
     }
@@ -126,7 +120,7 @@ function FitMapToGeoJSON({ geoData }) {
   return null;
 }
 
-export default function WardMap() {
+export default function WardMap({ onWardSelect }) {
   const [geoData, setGeoData] = useState(null);
   const [statusMsg, setStatusMsg] = useState(
     'Loading ward risk data...'
@@ -152,16 +146,14 @@ export default function WardMap() {
           data.features.length > 0
         ) {
           setGeoData(data);
-          setStatusMsg('Displaying live database wards.');
+          setStatusMsg('LIVE • Database wards');
         } else {
           console.warn(
             'API returned empty features, using fallback dummy wards.'
           );
 
           setGeoData(DUMMY_WARDS_GEOJSON);
-          setStatusMsg(
-            'No live wards found. Displaying fallback demo data.'
-          );
+          setStatusMsg('DEMO DATA • No live wards found');
         }
       })
       .catch((err) => {
@@ -171,9 +163,7 @@ export default function WardMap() {
         );
 
         setGeoData(DUMMY_WARDS_GEOJSON);
-        setStatusMsg(
-          'Backend unavailable. Displaying fallback demo data.'
-        );
+        setStatusMsg('DEMO DATA • Backend unavailable');
       });
   }, []);
 
@@ -182,10 +172,6 @@ export default function WardMap() {
       return;
     }
 
-    /*
-     * Save the current popup content before replacing it
-     * temporarily with the forecast popup.
-     */
     const currentPopupContent =
       layer.getPopup()?.getContent();
 
@@ -206,7 +192,7 @@ export default function WardMap() {
 
       setForecastByWard((previous) => ({
         ...previous,
-        [wardId]: data
+        [wardId]: data,
       }));
 
       const forecastRows = data?.forecasts || [];
@@ -364,10 +350,6 @@ export default function WardMap() {
         </div>
       `);
 
-      /*
-       * When the forecast popup is closed, restore the
-       * original current-risk popup.
-       */
       layer.once('popupclose', () => {
         if (currentPopupContent) {
           layer.bindPopup(currentPopupContent);
@@ -420,11 +402,10 @@ export default function WardMap() {
 
     return {
       fillColor: getRiskColor(riskBand),
-      weight: 2,
+      weight: 1.5,
       opacity: 1,
-      color: '#ffffff',
-      dashArray: '3',
-      fillOpacity: 0.65
+      color: '#f8f4ec',
+      fillOpacity: 0.62,
     };
   };
 
@@ -442,7 +423,7 @@ export default function WardMap() {
       vulnerability_score,
       final_risk_score,
       final_risk_band,
-      score_time
+      score_time,
     } = properties;
 
     layer._thermaSenseWardName =
@@ -454,6 +435,26 @@ export default function WardMap() {
       'unknown';
 
     const riskColor = getRiskColor(displayRiskBand);
+
+    const selectedWard = {
+      id,
+      name: name || 'Unnamed Ward',
+      wbgt,
+      utci,
+      heat_index,
+      risk_band,
+      risk_score_raw,
+      vulnerability_score,
+      final_risk_score,
+      final_risk_band,
+      score_time,
+    };
+
+    layer.on('click', () => {
+      if (onWardSelect) {
+        onWardSelect(selectedWard);
+      }
+    });
 
     const forecastButtonId =
       `forecast-button-${id}`;
@@ -580,7 +581,7 @@ export default function WardMap() {
               padding: 8px 10px;
               border: 0;
               border-radius: 5px;
-              background: #1e293b;
+              background: #814330;
               color: white;
               cursor: pointer;
               font-size: 12px;
@@ -633,201 +634,118 @@ export default function WardMap() {
 
   return (
     <div
+      className="thermasense-map-shell"
       style={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100vh',
-        width: '100vw'
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+        minHeight: '520px',
       }}
     >
-      <header
+      <MapContainer
+        center={[20.5937, 78.9629]}
+        zoom={5}
         style={{
-          padding: '12px 20px',
-          backgroundColor: '#1e293b',
-          color: '#fff',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center'
+          height: '100%',
+          width: '100%',
+          minHeight: '520px',
         }}
       >
-        <h2
-          style={{
-            margin: 0,
-            fontSize: '1.25rem'
-          }}
-        >
-          ThermaSense — Ward Heat Risk Dashboard
-        </h2>
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
 
-        <span
-          style={{
-            fontSize: '0.85rem',
-            color: '#94a3b8'
-          }}
-        >
-          {statusMsg}
-        </span>
-      </header>
+        {geoData && (
+          <>
+            <FitMapToGeoJSON
+              geoData={geoData}
+            />
+
+            <GeoJSON
+              key={JSON.stringify(geoData)}
+              data={geoData}
+              style={styleFeature}
+              onEachFeature={onEachFeature}
+            />
+          </>
+        )}
+      </MapContainer>
 
       <div
         style={{
-          flex: 1,
-          position: 'relative'
+          position: 'absolute',
+          top: '18px',
+          left: '18px',
+          zIndex: 1000,
+          padding: '8px 12px',
+          background: 'rgba(250, 247, 241, 0.94)',
+          border: '1px solid rgba(23, 23, 20, 0.12)',
+          fontFamily: 'monospace',
+          fontSize: '10px',
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+          color: '#3f3d38',
         }}
       >
-        <MapContainer
-          center={[20.5937, 78.9629]}
-          zoom={5}
-          style={{
-            height: '100%',
-            width: '100%'
-          }}
-        >
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
+        {statusMsg}
+      </div>
 
-          {geoData && (
-            <>
-              <FitMapToGeoJSON
-                geoData={geoData}
-              />
-
-              <GeoJSON
-                key={JSON.stringify(geoData)}
-                data={geoData}
-                style={styleFeature}
-                onEachFeature={onEachFeature}
-              />
-            </>
-          )}
-        </MapContainer>
-
+      <div
+        style={{
+          position: 'absolute',
+          bottom: '18px',
+          right: '18px',
+          zIndex: 1000,
+          background: 'rgba(250, 247, 241, 0.96)',
+          border: '1px solid rgba(23, 23, 20, 0.12)',
+          padding: '12px 14px',
+          fontFamily: 'sans-serif',
+          fontSize: '11px',
+          color: '#282621',
+        }}
+      >
         <div
           style={{
-            position: 'absolute',
-            bottom: '24px',
-            right: '24px',
-            backgroundColor:
-              'rgba(255, 255, 255, 0.95)',
-            padding: '12px 16px',
-            borderRadius: '8px',
-            boxShadow:
-              '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-            zIndex: 1000,
-            fontFamily: 'sans-serif',
-            fontSize: '12px'
+            fontFamily: 'monospace',
+            fontSize: '9px',
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase',
+            marginBottom: '9px',
+            color: '#706e67',
           }}
         >
-          <div
-            style={{
-              fontWeight: 'bold',
-              marginBottom: '8px',
-              color: '#1e293b'
-            }}
-          >
-            Heat Risk Band
-          </div>
+          Thermal risk
+        </div>
 
+        {[
+          ['extreme', 'Extreme'],
+          ['high', 'High'],
+          ['moderate', 'Moderate'],
+          ['low', 'Low'],
+          ['unknown', 'Unknown'],
+        ].map(([band, label]) => (
           <div
+            key={band}
             style={{
               display: 'flex',
-              flexDirection: 'column',
-              gap: '5px'
+              alignItems: 'center',
+              gap: '7px',
+              marginBottom: '5px',
             }}
           >
-            <div
+            <span
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
+                width: '10px',
+                height: '10px',
+                display: 'inline-block',
+                background: getRiskColor(band),
               }}
-            >
-              <span
-                style={{
-                  width: '14px',
-                  height: '14px',
-                  backgroundColor: '#ef4444',
-                  borderRadius: '3px'
-                }}
-              />
-              Extreme
-            </div>
+            />
 
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
-            >
-              <span
-                style={{
-                  width: '14px',
-                  height: '14px',
-                  backgroundColor: '#f97316',
-                  borderRadius: '3px'
-                }}
-              />
-              High
-            </div>
-
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
-            >
-              <span
-                style={{
-                  width: '14px',
-                  height: '14px',
-                  backgroundColor: '#eab308',
-                  borderRadius: '3px'
-                }}
-              />
-              Moderate
-            </div>
-
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
-            >
-              <span
-                style={{
-                  width: '14px',
-                  height: '14px',
-                  backgroundColor: '#22c55e',
-                  borderRadius: '3px'
-                }}
-              />
-              Low
-            </div>
-
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
-            >
-              <span
-                style={{
-                  width: '14px',
-                  height: '14px',
-                  backgroundColor: '#9ca3af',
-                  borderRadius: '3px'
-                }}
-              />
-              Unknown
-            </div>
+            <span>{label}</span>
           </div>
-        </div>
+        ))}
       </div>
     </div>
   );

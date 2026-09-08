@@ -84,8 +84,10 @@ ZONE_SWELTERING_EXCESS_PCT: dict[str, float] = {
 DEFAULT_BASELINE_MORTALITY_RATE = 6.2
 
 # Empirical ceiling: Ahmedabad May 2010 recorded +43.1% excess mortality.
-# We bound the effective excess mortality percentage to 50.0% (effective_RR <= 1.50)
-# to prevent unphysical extrapolation under extreme compound heat.
+# Asymptotic saturating curve approaching RR_CEILING = 1.50 (+50.0% excess):
+# effective_RR = 1.0 + (RR_CEILING - 1.0) * (1 - exp(-k * (raw_effective_RR - 1.0)))
+RR_CEILING = 1.50
+SATURATION_K = 4.70
 MAX_EXCESS_MORTALITY_PCT_CAP = 50.0
 
 # 0-100 Dashboard Index Anchor: Maps Ahmedabad's 43.1% event to ~91.7
@@ -173,10 +175,15 @@ def calculate_mortality_risk(
     vuln_multiplier = 1.0 + (vuln / 100.0)
     raw_effective_rr = 1.0 + (raw_rr - 1.0) * vuln_multiplier
 
-    # 4. Enforce Empirical Ceiling (Azhar et al. 2014 Ahmedabad Benchmark)
-    max_allowed_rr = 1.0 + (MAX_EXCESS_MORTALITY_PCT_CAP / 100.0)
-    capped = raw_effective_rr > max_allowed_rr
-    effective_rr = min(max_allowed_rr, raw_effective_rr)
+    # 4. Apply Asymptotic Saturating Curve (Approaching RR_CEILING = 1.50)
+    # Replaces hard clamping with continuous asymptotic saturation:
+    # effective_RR = 1.0 + (RR_CEILING - 1.0) * (1 - exp(-k * (raw_effective_RR - 1.0)))
+    if raw_effective_rr > 1.0:
+        excess_raw = raw_effective_rr - 1.0
+        effective_rr = 1.0 + (RR_CEILING - 1.0) * (1.0 - math.exp(-SATURATION_K * excess_raw))
+    else:
+        effective_rr = 1.0
+    capped = False
 
     # 5. Excess Mortality Percentage (%)
     excess_mortality_pct = round((effective_rr - 1.0) * 100.0, 2)
@@ -205,13 +212,8 @@ def calculate_mortality_risk(
         f"Continuous RR derived from Delhi multi-city study slope (+4.45%/°C above {zone_threshold}°C WBGT, 95% CI: 2.40–6.55%). "
         f"Vulnerability scaled via 1+(RR-1)*(1+V/100) [internal assumption]. "
         f"Chakraborty et al. (2024) seasonal sweltering benchmark for {zone}: +{sweltering_ref}%. "
-        f"Calibrated against Azhar et al. (2014) Ahmedabad 2010 event (+43.1% ceiling)."
+        f"Asymptotic saturating curve approaching RR ceiling {RR_CEILING} (calibrated against Azhar et al. 2014 Ahmedabad event)."
     )
-    if capped:
-        confidence_note += (
-            f" [WARNING: Raw calculated excess ({round((raw_effective_rr - 1.0) * 100.0, 1)}%) "
-            f"exceeded empirical ceiling; capped at {MAX_EXCESS_MORTALITY_PCT_CAP}%]."
-        )
 
     hospitalization_note = (
         "PROVISIONAL ESTIMATE: Derived as a secondary 6.0x multiplier over excess mortality. "

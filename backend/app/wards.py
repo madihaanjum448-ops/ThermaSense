@@ -35,6 +35,10 @@ def get_wards_geojson():
             rs.vulnerability_score,
             rs.final_risk_score,
             rs.final_risk_band,
+            rs.mortality_risk_index,
+            rs.excess_mortality_pct,
+            rs.predicted_excess_deaths,
+            rs.predicted_hospitalizations,
             rs.score_time
         FROM wards w
         LEFT JOIN LATERAL (
@@ -79,6 +83,18 @@ def get_wards_geojson():
                     row.final_risk_score
                 ),
                 "final_risk_band": row.final_risk_band,
+                "mortality_risk_index": _to_float(
+                    getattr(row, "mortality_risk_index", None)
+                ),
+                "excess_mortality_pct": _to_float(
+                    getattr(row, "excess_mortality_pct", None)
+                ),
+                "predicted_excess_deaths": _to_float(
+                    getattr(row, "predicted_excess_deaths", None)
+                ),
+                "predicted_hospitalizations": _to_float(
+                    getattr(row, "predicted_hospitalizations", None)
+                ),
                 "score_time": (
                     row.score_time.isoformat()
                     if row.score_time
@@ -114,7 +130,11 @@ def get_ward_forecast(ward_id: int):
             risk_band,
             vulnerability_score,
             final_risk_score,
-            final_risk_band
+            final_risk_band,
+            mortality_risk_index,
+            excess_mortality_pct,
+            predicted_excess_deaths,
+            predicted_hospitalizations
         FROM risk_scores
         WHERE ward_id = :ward_id
           AND is_forecast = TRUE
@@ -152,6 +172,18 @@ def get_ward_forecast(ward_id: int):
                 row.final_risk_score
             ),
             "final_risk_band": row.final_risk_band,
+            "mortality_risk_index": _to_float(
+                getattr(row, "mortality_risk_index", None)
+            ),
+            "excess_mortality_pct": _to_float(
+                getattr(row, "excess_mortality_pct", None)
+            ),
+            "predicted_excess_deaths": _to_float(
+                getattr(row, "predicted_excess_deaths", None)
+            ),
+            "predicted_hospitalizations": _to_float(
+                getattr(row, "predicted_hospitalizations", None)
+            ),
         })
 
     return {

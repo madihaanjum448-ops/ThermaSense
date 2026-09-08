@@ -43,6 +43,7 @@ wards = Table(
     Column("outdoor_worker_pct", Numeric),
     Column("slum_household_pct", Numeric),
     Column("green_cover_pct", Numeric),
+    Column("baseline_mortality_rate", Numeric),
 )
 
 weather_readings = Table(
@@ -72,25 +73,33 @@ def get_wards(city: str | None = None):
         return [dict(row._mapping) for row in conn.execute(text(query), params)]
 
 def get_ward_demographics(ward_id: int):
-    """Return a ward's vulnerability-relevant demographics for risk weighting."""
+    """Return a ward's vulnerability demographics, population, and baseline mortality inputs."""
     with engine.connect() as conn:
         row = conn.execute(
             text("""
-                SELECT elderly_pct, outdoor_worker_pct,
-                       slum_household_pct, green_cover_pct
+                SELECT *
                 FROM wards
                 WHERE id = :ward_id
             """),
             {"ward_id": ward_id},
         ).fetchone()
-        return dict(row._mapping) if row else None
+        if not row:
+            return None
+        data = dict(row._mapping)
+        # Default baseline mortality rate to 6.2 per 1000/year (SRS national urban fallback)
+        if data.get("baseline_mortality_rate") is None:
+            data["baseline_mortality_rate"] = 6.20
+        if data.get("population") is None:
+            data["population"] = 40000
+        return data
 
 
 def insert_ward(name: str, city: str, lat: float, lon: float,
                  population: int = None, elderly_pct: float = None,
                  outdoor_worker_pct: float = None,
                  slum_household_pct: float = None,
-                 green_cover_pct: float = None) -> int:
+                 green_cover_pct: float = None,
+                 baseline_mortality_rate: float = None) -> int:
     """
     Insert a ward using just a centroid point for now (Day 1 — real polygon
     boundaries get loaded separately once osmnx/Bhuvan data is pulled).
@@ -101,14 +110,17 @@ def insert_ward(name: str, city: str, lat: float, lon: float,
             text("""
                 INSERT INTO wards (name, city, centroid_lat, centroid_lon,
                                     population, elderly_pct, outdoor_worker_pct,
-                                    slum_household_pct, green_cover_pct)
+                                    slum_household_pct, green_cover_pct,
+                                    baseline_mortality_rate)
                 VALUES (:name, :city, :lat, :lon, :population, :elderly_pct,
-                        :outdoor_worker_pct, :slum_household_pct, :green_cover_pct)
+                        :outdoor_worker_pct, :slum_household_pct, :green_cover_pct,
+                        :baseline_mortality_rate)
                 RETURNING id
             """),
             dict(name=name, city=city, lat=lat, lon=lon, population=population,
                  elderly_pct=elderly_pct, outdoor_worker_pct=outdoor_worker_pct,
-                 slum_household_pct=slum_household_pct, green_cover_pct=green_cover_pct),
+                 slum_household_pct=slum_household_pct, green_cover_pct=green_cover_pct,
+                 baseline_mortality_rate=baseline_mortality_rate or 6.20),
         )
         return result.scalar_one()
 

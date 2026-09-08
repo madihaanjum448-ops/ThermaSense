@@ -1,4 +1,6 @@
-from fastapi import APIRouter
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, HTTPException
 from sqlalchemy import text
 from db import engine
 import json
@@ -93,14 +95,58 @@ def get_wards_geojson():
     }
 
 
+DAY_LABELS = ["Today", "Tomorrow", "Day 3", "Day 4", "Day 5", "Day 6", "Day 7"]
+
+
+def _row_to_dict(row):
+    return {
+        "id": row.id,
+        "ward_id": row.ward_id,
+        "timestamp": (
+            row.score_time.isoformat() if row.score_time else None
+        ),
+        # kept for backward-compat with the existing map popup code
+        "score_time": (
+            row.score_time.isoformat() if row.score_time else None
+        ),
+        "is_forecast": bool(row.is_forecast),
+        "wbgt": _to_float(row.wbgt_c),
+        "utci": _to_float(row.utci_c),
+        "heat_index": _to_float(row.heat_index_c),
+        "risk_score_raw": _to_float(row.risk_score_raw),
+        "risk_band": row.risk_band or "unknown",
+        "vulnerability_score": _to_float(row.vulnerability_score),
+        "final_risk_score": _to_float(row.final_risk_score),
+        "final_risk_band": row.final_risk_band or "unknown",
+    }
+
+
 @router.get("/wards/{ward_id}/forecast")
-def get_ward_forecast(ward_id: int):
+def get_ward_forecast(ward_id: int, days: int = 5):
     """
     Return future forecast risk scores for one ward.
 
-    Only rows explicitly marked as forecast are returned.
-    Results are ordered chronologically.
+    - Only rows explicitly marked as forecast are returned.
+    - Capped to `days` ahead (default 5 — see cleanup_forecasts.py for
+      why 5 was chosen as the internal retention/display horizon).
+    - Returns both the raw hourly series (for the detail/tooltip view)
+      and a `daily` bucketed summary (Today / Tomorrow / Day 3 / Day 4 /
+      Day 5), each day's summary being its single worst (peak final
+      risk score) hour — the hour that actually matters for ward safety
+      planning.
     """
+    days = max(1, min(days, 7))
+
+    ward_exists = None
+    with engine.connect() as conn:
+        ward_exists = conn.execute(
+            text("SELECT id FROM wards WHERE id = :ward_id"),
+            {"ward_id": ward_id},
+        ).fetchone()
+
+    if ward_exists is None:
+        raise HTTPException(status_code=404, detail="Ward not found")
+
     query = text("""
         SELECT
             id,
@@ -119,43 +165,61 @@ def get_ward_forecast(ward_id: int):
         WHERE ward_id = :ward_id
           AND is_forecast = TRUE
           AND score_time > NOW()
+          AND score_time <= NOW() + (:days || ' days')::interval
         ORDER BY score_time ASC, id ASC
     """)
 
     with engine.connect() as conn:
         rows = conn.execute(
             query,
-            {"ward_id": ward_id},
+            {"ward_id": ward_id, "days": days},
         ).fetchall()
 
-    forecasts = []
+    forecasts = [_row_to_dict(row) for row in rows]
 
-    for row in rows:
-        forecasts.append({
-            "id": row.id,
-            "ward_id": row.ward_id,
-            "score_time": (
-                row.score_time.isoformat()
-                if row.score_time
-                else None
+    # --- Bucket into calendar days (UTC) for the Today/D2../D5 view ---
+    today_utc = datetime.now(timezone.utc).date()
+    buckets: dict[int, list[dict]] = {}
+
+    for f in forecasts:
+        if not f["timestamp"]:
+            continue
+        f_date = datetime.fromisoformat(f["timestamp"]).date()
+        offset = (f_date - today_utc).days
+        buckets.setdefault(offset, []).append(f)
+
+    daily = []
+    for offset in sorted(buckets.keys())[:days]:
+        rows_for_day = buckets[offset]
+        # Representative hour = worst-case (peak final risk score) for
+        # the day, since that's the hour ward officials need to plan for.
+        peak = max(
+            rows_for_day,
+            key=lambda r: (
+                r["final_risk_score"]
+                if r["final_risk_score"] is not None
+                else -1
             ),
-            "is_forecast": bool(row.is_forecast),
-            "wbgt": _to_float(row.wbgt_c),
-            "utci": _to_float(row.utci_c),
-            "heat_index": _to_float(row.heat_index_c),
-            "risk_score_raw": _to_float(row.risk_score_raw),
-            "risk_band": row.risk_band or "unknown",
-            "vulnerability_score": _to_float(
-                row.vulnerability_score
+        )
+        label = (
+            DAY_LABELS[offset]
+            if 0 <= offset < len(DAY_LABELS)
+            else f"Day {offset + 1}"
+        )
+        daily.append({
+            "label": label,
+            "date": (
+                (today_utc.fromordinal(today_utc.toordinal() + offset))
+                .isoformat()
             ),
-            "final_risk_score": _to_float(
-                row.final_risk_score
-            ),
-            "final_risk_band": row.final_risk_band,
+            "peak_hour": peak,
+            "hours_available": len(rows_for_day),
         })
 
     return {
         "ward_id": ward_id,
         "count": len(forecasts),
+        "days_requested": days,
         "forecasts": forecasts,
+        "daily": daily,
     }

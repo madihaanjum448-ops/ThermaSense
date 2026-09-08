@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS wards (
     -- EXTRA FEATURE: additional vulnerability signals beyond the base spec
     slum_household_pct NUMERIC(5,2),                     -- % households in informal/slum housing (poor cooling access)
     green_cover_pct     NUMERIC(5,2),                    -- % ward area under vegetation (urban heat island proxy)
+    baseline_mortality_rate NUMERIC(5,2) DEFAULT 6.20,   -- annual crude death rate per 1,000 population (SRS fallback: 6.2)
     created_at      TIMESTAMPTZ DEFAULT now()
 );
 
@@ -69,6 +70,10 @@ CREATE TABLE IF NOT EXISTS risk_scores (
     vulnerability_score NUMERIC(5,2),                    -- demographic vulnerability score (0-100)
     final_risk_score    NUMERIC(6,3),                    -- vulnerability-adjusted composite risk score
     final_risk_band     VARCHAR(20),                    -- vulnerability-adjusted risk band
+    mortality_risk_index NUMERIC(5,2),                   -- scaled public-health mortality risk index (0-100)
+    excess_mortality_pct NUMERIC(5,2),                   -- relative excess mortality percentage (%)
+    predicted_excess_deaths NUMERIC(8,3),               -- estimated daily excess deaths
+    predicted_hospitalizations NUMERIC(8,3),            -- estimated daily heat-related hospitalizations
     computed_at         TIMESTAMPTZ DEFAULT now()
 );
 

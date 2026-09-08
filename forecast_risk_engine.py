@@ -24,6 +24,8 @@ from datetime import datetime, timezone
 from sqlalchemy import text
 from db import engine, get_ward_demographics
 from risk_scoring import calculate_vulnerability_score, combine_risk
+from mortality_risk import calculate_mortality_risk
+from backend.app.derivation import derive_thermal_inputs
 
 from pythermalcomfort.models import (
     heat_index_lu,
@@ -43,6 +45,18 @@ def _finite(value):
         value is not None
         and math.isfinite(float(value))
     )
+
+
+def _detect_climate_zone(city: str | None) -> str:
+    """Infer climate zone from city name, defaulting to semi_arid."""
+    if not city:
+        return "semi_arid"
+    c = str(city).lower().strip()
+    if any(k in c for k in ["chennai", "mumbai", "kochi", "coastal"]):
+        return "humid_tropical"
+    if any(k in c for k in ["varanasi", "lucknow", "patna", "kanpur", "gangetic"]):
+        return "humid_subtropical"
+    return "semi_arid"
 
 
 def _risk_from_indices(
@@ -146,6 +160,7 @@ def get_forecast_rows(
                     temp_c,
                     humidity_pct,
                     wind_speed_ms,
+                    solar_radiation_wm2,
                     source,
                     is_forecast
                 FROM weather_readings
@@ -237,17 +252,49 @@ def calculate_forecast_risk(
     )
 
     # --------------------------------------------------
-    # Forecast radiant-temperature assumption
+    # Forecast radiant-temperature & solar derivation
     # --------------------------------------------------
+    ward_id = forecast_row["ward_id"]
+    with engine.connect() as conn:
+        ward_row = conn.execute(
+            text("SELECT centroid_lat, centroid_lon FROM wards WHERE id = :ward_id"),
+            {"ward_id": ward_id}
+        ).fetchone()
 
-    globe_c = tdb
-    mrt_c = tdb
+    solar = forecast_row.get("solar_radiation_wm2")
+    if _finite(solar) and ward_row:
+        lat = float(ward_row._mapping["centroid_lat"])
+        lon = float(ward_row._mapping["centroid_lon"])
+        derived = derive_thermal_inputs(
+            temp_c=tdb,
+            humidity=rh,
+            wind_ms=wind,
+            solar_rad=float(solar),
+            timestamp=forecast_row["reading_time"].isoformat(),
+            latitude=lat,
+            longitude=lon
+        )
+        twb_natural = derived["twb_natural"]
+        globe_c = derived["tg"]
+        mrt_c = derived["tr"]
 
-    wbgt_result = wbgt(
-        twb=twb,
-        tg=globe_c,
-        round_output=False,
-    )
+        wbgt_result = wbgt(
+            twb=twb_natural,
+            tg=globe_c,
+            tdb=tdb,
+            with_solar_load=True,
+            round_output=False,
+        )
+        solar_used = float(solar)
+    else:
+        globe_c = tdb
+        mrt_c = tdb
+        wbgt_result = wbgt(
+            twb=twb,
+            tg=globe_c,
+            round_output=False,
+        )
+        solar_used = None
 
     wbgt_c = float(
         wbgt_result.wbgt
@@ -295,6 +342,32 @@ def calculate_forecast_risk(
         vulnerability_score,
     )
 
+    # --------------------------------------------------
+    # Public-Health Mortality & Hospitalization Risk
+    # --------------------------------------------------
+    city_name = demographics.get("city") if demographics else None
+    zone = _detect_climate_zone(city_name)
+    base_mort_rate = (
+        float(demographics.get("baseline_mortality_rate", 6.20))
+        if demographics and demographics.get("baseline_mortality_rate") is not None
+        else 6.20
+    )
+    pop = (
+        int(demographics.get("population", 40000))
+        if demographics and demographics.get("population") is not None
+        else 40000
+    )
+
+    mortality = calculate_mortality_risk(
+        heat_index_c=heat_index_c,
+        wbgt_c=wbgt_c,
+        thermal_score=final_risk_score,
+        vulnerability_score=vulnerability_score,
+        baseline_daily_mortality_rate=base_mort_rate,
+        ward_population=pop,
+        climate_zone=zone,
+    )
+
     return {
         "ward_id": forecast_row["ward_id"],
 
@@ -328,7 +401,15 @@ def calculate_forecast_risk(
 
         "final_risk_band": final_risk_band,
 
-        "solar_radiation_wm2_used": None,
+        "mortality_risk_index": mortality["mortality_risk_index"],
+        "relative_risk": mortality["relative_risk"],
+        "excess_mortality_pct": mortality["excess_mortality_pct"],
+        "predicted_excess_deaths_daily": mortality["predicted_excess_deaths_daily"],
+        "predicted_hospitalization_estimate": mortality["predicted_hospitalization_estimate"],
+        "mortality_confidence_note": mortality["confidence_note"],
+        "hospitalization_note": mortality["hospitalization_note"],
+
+        "solar_radiation_wm2_used": solar_used,
 
         "estimated_globe_temperature_c": round(
             globe_c,
@@ -341,9 +422,10 @@ def calculate_forecast_risk(
         ),
 
         "solar_note": (
-            "Forecast solar radiation unavailable; "
-            "MRT conservatively approximated from "
-            "forecast air temperature."
+            "Forecast astronomical solar radiation used to estimate globe/MRT."
+            if solar_used is not None
+            else "Forecast solar radiation unavailable; MRT conservatively "
+                 "approximated from forecast air temperature."
         ),
     }
 
@@ -379,6 +461,10 @@ def save_forecast_risk(
                   vulnerability_score = :vulnerability_score,
                   final_risk_score = :final_risk_score,
                   final_risk_band = :final_risk_band,
+                  mortality_risk_index = :mortality_risk_index,
+                  excess_mortality_pct = :excess_mortality_pct,
+                  predicted_excess_deaths = :predicted_excess_deaths,
+                  predicted_hospitalizations = :predicted_hospitalizations,
                   computed_at = :computed_at
                 WHERE ward_id = :ward_id
                   AND score_time = :score_time
@@ -396,6 +482,10 @@ def save_forecast_risk(
                 "vulnerability_score": result["vulnerability_score"],
                 "final_risk_score": result["final_risk_score"],
                 "final_risk_band": result["final_risk_band"],
+                "mortality_risk_index": result.get("mortality_risk_index"),
+                "excess_mortality_pct": result.get("excess_mortality_pct"),
+                "predicted_excess_deaths": result.get("predicted_excess_deaths_daily"),
+                "predicted_hospitalizations": result.get("predicted_hospitalization_estimate"),
                 "computed_at": datetime.now(
                     timezone.utc
                 ),
@@ -425,6 +515,10 @@ def save_forecast_risk(
                 vulnerability_score,
                 final_risk_score,
                 final_risk_band,
+                mortality_risk_index,
+                excess_mortality_pct,
+                predicted_excess_deaths,
+                predicted_hospitalizations,
                 computed_at
             )
         VALUES
@@ -440,6 +534,10 @@ def save_forecast_risk(
                 :vulnerability_score,
                 :final_risk_score,
                 :final_risk_band,
+                :mortality_risk_index,
+                :excess_mortality_pct,
+                :predicted_excess_deaths,
+                :predicted_hospitalizations,
                 :computed_at
             )
         """
@@ -456,6 +554,10 @@ def save_forecast_risk(
         "vulnerability_score": result["vulnerability_score"],
         "final_risk_score": result["final_risk_score"],
         "final_risk_band": result["final_risk_band"],
+        "mortality_risk_index": result.get("mortality_risk_index"),
+        "excess_mortality_pct": result.get("excess_mortality_pct"),
+        "predicted_excess_deaths": result.get("predicted_excess_deaths_daily"),
+        "predicted_hospitalizations": result.get("predicted_hospitalization_estimate"),
         "computed_at": datetime.now(timezone.utc),
     },
 )

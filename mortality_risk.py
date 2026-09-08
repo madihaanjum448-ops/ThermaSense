@@ -66,21 +66,6 @@ ZONE_WBGT_THRESHOLDS: dict[str, float] = {
     "humid_subtropical": 25.0,
 }
 
-# Standard baseline UTCI threshold (°C) for moderate heat stress onset
-# (matches _risk_from_indices moderate band lower bound: 26.0°C)
-UTCI_THRESHOLD = 26.0
-
-
-def _rr_from_overshoot(
-    value_c: float,
-    threshold_c: float,
-    beta: float = BETA_PER_DEGREE_CELSIUS,
-) -> float:
-    """Compute continuous relative risk from thermal index overshoot above threshold."""
-    if value_c <= threshold_c:
-        return 1.0
-    return 1.0 + beta * (value_c - threshold_c)
-
 # Conservative (lower-bound) per-unit Heat Index slope from Chakraborty et al. (2024)
 ZONE_HI_COEFFICIENTS: dict[str, float] = {
     "semi_arid": 0.026,       # Delhi: 2.6% (range: 2.6% - 4.2%)
@@ -120,7 +105,6 @@ def calculate_mortality_risk(
     wbgt_c: float,
     thermal_score: float,
     vulnerability_score: float,
-    utci_c: float | None = None,
     baseline_daily_mortality_rate: float | None = None,
     ward_population: int | None = None,
     climate_zone: str = "semi_arid",
@@ -138,8 +122,6 @@ def calculate_mortality_risk(
         Raw or combined thermal severity score (0-100).
     vulnerability_score : float
         Demographic vulnerability score from risk_scoring.py (0-100).
-    utci_c : float, optional
-        Universal Thermal Climate Index in °C.
     baseline_daily_mortality_rate : float, optional
         Annual crude death rate per 1,000 population. Defaults to 6.2 (India SRS).
     ward_population : int, optional
@@ -173,7 +155,6 @@ def calculate_mortality_risk(
     wbgt = float(wbgt_c) if wbgt_c is not None and math.isfinite(float(wbgt_c)) else 25.0
     hi = float(heat_index_c) if heat_index_c is not None and math.isfinite(float(heat_index_c)) else 26.0
     vuln = max(0.0, min(100.0, float(vulnerability_score or 0.0)))
-    utci_val = float(utci_c) if utci_c is not None and math.isfinite(float(utci_c)) else None
     
     # Ward baseline mortality and population defaults
     mort_rate = (
@@ -183,17 +164,10 @@ def calculate_mortality_risk(
     )
     pop = int(ward_population) if ward_population is not None and int(ward_population) > 0 else 40000
 
-    # 2. Continuous Relative Risk (RR) Calculation (Worst-of-Indices Overshoot)
-    # Mirrors the dashboard risk-band logic: evaluates both WBGT and UTCI overshoots
-    # above their respective baseline thresholds using the validated 4.45%/°C slope.
+    # 2. Continuous Relative Risk (RR) Calculation
     zone_threshold = ZONE_WBGT_THRESHOLDS[zone]
-    rr_wbgt = _rr_from_overshoot(wbgt, zone_threshold, BETA_PER_DEGREE_CELSIUS)
-    rr_utci = (
-        _rr_from_overshoot(utci_val, UTCI_THRESHOLD, BETA_PER_DEGREE_CELSIUS)
-        if utci_val is not None
-        else 1.0
-    )
-    raw_rr = max(rr_wbgt, rr_utci)
+    delta_t = max(0.0, wbgt - zone_threshold)
+    raw_rr = 1.0 + (BETA_PER_DEGREE_CELSIUS * delta_t)
 
     # 3. Apply Vulnerability Adjustment (Documented Internal Transformation)
     # effective_RR = 1 + (RR_raw - 1) * (1 + vulnerability_score / 100)

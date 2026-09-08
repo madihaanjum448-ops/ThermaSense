@@ -361,6 +361,7 @@ def calculate_forecast_risk(
     mortality = calculate_mortality_risk(
         heat_index_c=heat_index_c,
         wbgt_c=wbgt_c,
+        utci_c=utci_c,
         thermal_score=final_risk_score,
         vulnerability_score=vulnerability_score,
         baseline_daily_mortality_rate=base_mort_rate,

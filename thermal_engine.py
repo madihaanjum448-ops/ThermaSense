@@ -311,6 +311,7 @@ def calculate_thermal_risk(ward_id: int) -> dict:
     mortality = calculate_mortality_risk(
         heat_index_c=heat_index_c,
         wbgt_c=wbgt_c,
+        utci_c=utci_c,
         thermal_score=final_score,
         vulnerability_score=vulnerability_score,
         baseline_daily_mortality_rate=base_mort_rate,

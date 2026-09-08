@@ -120,7 +120,8 @@ def fetch_open_meteo(
             "relative_humidity_2m,"
             "wind_speed_10m,"
             "apparent_temperature,"
-            "weather_code"
+            "weather_code,"
+            "cloud_cover"
         ),
 
         # Hourly forecast.
@@ -131,7 +132,8 @@ def fetch_open_meteo(
             "apparent_temperature,"
             "precipitation_probability,"
             "precipitation,"
-            "weather_code"
+            "weather_code,"
+            "cloud_cover"
         ),
 
         # 7-day hourly forecast.
@@ -152,12 +154,15 @@ def fetch_open_meteo(
         params,
     )
 
+    from fetch_solar import estimate_realtime_solar
+
     current = data["current"]
+    cur_time = _parse_iso_time(current["time"])
+    cur_cloud = float(current.get("cloud_cover", 0.0) or 0.0)
+    cur_solar = estimate_realtime_solar(lat, lon, cur_time, cur_cloud)
 
     normalized_current = {
-        "reading_time": _parse_iso_time(
-            current["time"]
-        ),
+        "reading_time": cur_time,
         "temp_c": current.get(
             "temperature_2m"
         ),
@@ -167,6 +172,8 @@ def fetch_open_meteo(
         "wind_speed_ms": current.get(
             "wind_speed_10m"
         ),
+        "cloud_cover_pct": cur_cloud,
+        "solar_radiation_wm2": cur_solar["effective_solar_wm2"],
         "is_forecast": False,
         "raw": data,
     }
@@ -216,15 +223,21 @@ def fetch_open_meteo(
         []
     )
 
+    cloud_covers = hourly.get(
+        "cloud_cover",
+        []
+    )
+
     normalized_forecast = []
 
     for i, timestamp in enumerate(times):
+        f_time = _parse_iso_time(timestamp)
+        f_cloud = float(cloud_covers[i] if i < len(cloud_covers) and cloud_covers[i] is not None else 0.0)
+        f_solar = estimate_realtime_solar(lat, lon, f_time, f_cloud)
 
         normalized_forecast.append(
             {
-                "reading_time": _parse_iso_time(
-                    timestamp
-                ),
+                "reading_time": f_time,
                 "temp_c": (
                     temperatures[i]
                     if i < len(temperatures)
@@ -260,6 +273,8 @@ def fetch_open_meteo(
                     if i < len(weather_codes)
                     else None
                 ),
+                "cloud_cover_pct": f_cloud,
+                "solar_radiation_wm2": f_solar["effective_solar_wm2"],
                 "is_forecast": True,
             }
         )

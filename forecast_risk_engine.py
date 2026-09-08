@@ -25,6 +25,7 @@ from sqlalchemy import text
 from db import engine, get_ward_demographics
 from risk_scoring import calculate_vulnerability_score, combine_risk
 from mortality_risk import calculate_mortality_risk
+from backend.app.derivation import derive_thermal_inputs
 
 from pythermalcomfort.models import (
     heat_index_lu,
@@ -159,6 +160,7 @@ def get_forecast_rows(
                     temp_c,
                     humidity_pct,
                     wind_speed_ms,
+                    solar_radiation_wm2,
                     source,
                     is_forecast
                 FROM weather_readings
@@ -250,17 +252,49 @@ def calculate_forecast_risk(
     )
 
     # --------------------------------------------------
-    # Forecast radiant-temperature assumption
+    # Forecast radiant-temperature & solar derivation
     # --------------------------------------------------
+    ward_id = forecast_row["ward_id"]
+    with engine.connect() as conn:
+        ward_row = conn.execute(
+            text("SELECT centroid_lat, centroid_lon FROM wards WHERE id = :ward_id"),
+            {"ward_id": ward_id}
+        ).fetchone()
 
-    globe_c = tdb
-    mrt_c = tdb
+    solar = forecast_row.get("solar_radiation_wm2")
+    if _finite(solar) and ward_row:
+        lat = float(ward_row._mapping["centroid_lat"])
+        lon = float(ward_row._mapping["centroid_lon"])
+        derived = derive_thermal_inputs(
+            temp_c=tdb,
+            humidity=rh,
+            wind_ms=wind,
+            solar_rad=float(solar),
+            timestamp=forecast_row["reading_time"].isoformat(),
+            latitude=lat,
+            longitude=lon
+        )
+        twb_natural = derived["twb_natural"]
+        globe_c = derived["tg"]
+        mrt_c = derived["tr"]
 
-    wbgt_result = wbgt(
-        twb=twb,
-        tg=globe_c,
-        round_output=False,
-    )
+        wbgt_result = wbgt(
+            twb=twb_natural,
+            tg=globe_c,
+            tdb=tdb,
+            with_solar_load=True,
+            round_output=False,
+        )
+        solar_used = float(solar)
+    else:
+        globe_c = tdb
+        mrt_c = tdb
+        wbgt_result = wbgt(
+            twb=twb,
+            tg=globe_c,
+            round_output=False,
+        )
+        solar_used = None
 
     wbgt_c = float(
         wbgt_result.wbgt
@@ -375,7 +409,7 @@ def calculate_forecast_risk(
         "mortality_confidence_note": mortality["confidence_note"],
         "hospitalization_note": mortality["hospitalization_note"],
 
-        "solar_radiation_wm2_used": None,
+        "solar_radiation_wm2_used": solar_used,
 
         "estimated_globe_temperature_c": round(
             globe_c,
@@ -388,9 +422,10 @@ def calculate_forecast_risk(
         ),
 
         "solar_note": (
-            "Forecast solar radiation unavailable; "
-            "MRT conservatively approximated from "
-            "forecast air temperature."
+            "Forecast astronomical solar radiation used to estimate globe/MRT."
+            if solar_used is not None
+            else "Forecast solar radiation unavailable; MRT conservatively "
+                 "approximated from forecast air temperature."
         ),
     }
 

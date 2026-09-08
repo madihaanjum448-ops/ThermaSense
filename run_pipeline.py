@@ -55,6 +55,7 @@ def store_forecast(ward_id: int, forecast: list):
                 temp_c=item.get("temp_c"),
                 humidity_pct=item.get("humidity_pct"),
                 wind_speed_ms=item.get("wind_speed_ms"),
+                solar_radiation_wm2=item.get("solar_radiation_wm2"),
                 is_forecast=True,
                 raw_payload=raw_forecast,
             )
@@ -115,6 +116,7 @@ def process_ward(ward: dict):
         temp_c=current["temp_c"],
         humidity_pct=current["humidity_pct"],
         wind_speed_ms=current["wind_speed_ms"],
+        solar_radiation_wm2=current.get("solar_radiation_wm2"),
         is_forecast=False,
         raw_payload=current.get("raw", {}),
     )

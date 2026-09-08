@@ -210,26 +210,44 @@ def calculate_thermal_risk(ward_id: int) -> dict:
     # Natural wet-bulb temperature used by the WBGT calculation.
     twb = float(wet_bulb_tmp(tdb=tdb, rh=rh))
 
-    solar_time, solar = _latest_solar_for_ward(ward_id)
+    # Retrieve ward coordinates
+    with engine.connect() as conn:
+        ward_row = conn.execute(
+            text("SELECT centroid_lat, centroid_lon FROM wards WHERE id = :ward_id"),
+            {"ward_id": ward_id}
+        ).fetchone()
+    if not ward_row:
+        raise ValueError(f"Ward {ward_id} not found in database")
+    lat = float(ward_row._mapping["centroid_lat"])
+    lon = float(ward_row._mapping["centroid_lon"])
+
+    # Determine solar radiation:
+    # 1. Check if real-time solar is directly attached in reading
+    solar = reading.get("solar_radiation_wm2")
+    solar_time = reading.get("reading_time")
+
+    # 2. If missing, check NASA POWER historical table
+    if not _finite(solar):
+        s_time, s_val = _latest_solar_for_ward(ward_id)
+        if _finite(s_val):
+            solar = s_val
+            solar_time = s_time
+
+    # 3. If still missing, compute real-time astronomical solar estimate on the fly
+    if not _finite(solar):
+        from fetch_solar import estimate_realtime_solar
+        cloud_pct = float(reading.get("cloud_cover_pct") or 0.0)
+        sol_calc = estimate_realtime_solar(lat, lon, reading["reading_time"], cloud_pct)
+        solar = sol_calc["effective_solar_wm2"]
+        solar_time = reading["reading_time"]
 
     if _finite(solar):
-        # Retrieve coordinates from database for the Liljegren solver
-        with engine.connect() as conn:
-            ward_row = conn.execute(
-                text("SELECT centroid_lat, centroid_lon FROM wards WHERE id = :ward_id"),
-                {"ward_id": ward_id}
-            ).fetchone()
-        if not ward_row:
-            raise ValueError(f"Ward {ward_id} not found in database")
-        lat = float(ward_row._mapping["centroid_lat"])
-        lon = float(ward_row._mapping["centroid_lon"])
-
         # Call the validated Liljegren derivation (which uses calibrated ground albedo 0.15)
         derived = derive_thermal_inputs(
             temp_c=tdb,
             humidity=rh,
             wind_ms=wind,
-            solar_rad=solar,
+            solar_rad=float(solar),
             timestamp=reading["reading_time"].isoformat(),
             latitude=lat,
             longitude=lon

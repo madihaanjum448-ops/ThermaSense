@@ -81,12 +81,18 @@ def _estimate_globe_temperature(
         # Forced/free convection envelope commonly used for globe-temperature
         # engineering estimates.
         h_free = 1.4 * ((delta / GLOBE_DIAMETER_M) ** 0.25) if delta > 0 else 0.0
-        h_forced = 6.3 * (v ** 0.6)
+        # Liljegren (2008): h_forced = 6.3 * v^0.6 / D^0.4. The D^0.4 term was
+        # previously omitted, which understated forced-convection cooling.
+        h_forced = 6.3 * (v ** 0.6) / (GLOBE_DIAMETER_M ** 0.4)
         h = max(h_free, h_forced)
 
         conv = h * (tg_k - ta_k)
         rad = EMISSIVITY * SIGMA * (tg_k**4 - sky_k**4)
-        absorbed = SOLAR_ABSORPTIVITY * max(float(solar_wm2), 0.0)
+        # Divide by 4: a sphere's projected (sun-facing) area is 1/4 of its
+        # total surface area, so the absorbed flux must be averaged over the
+        # full radiating surface, not applied at full intensity. Previously
+        # missing, which inflated absorbed solar load by 4x.
+        absorbed = SOLAR_ABSORPTIVITY * max(float(solar_wm2), 0.0) / 4.0
 
         return rad + conv - absorbed
 

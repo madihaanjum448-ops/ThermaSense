@@ -308,6 +308,18 @@ export default function WardMap({ onWardSelect }) {
                   'N/A'
                 }
               </div>
+
+              ${
+                forecast.mortality_risk_index !== null &&
+                forecast.mortality_risk_index !== undefined
+                  ? `
+                    <div style="font-size: 12px;">
+                      <strong>Mortality Risk:</strong>
+                      ${forecast.mortality_risk_index}
+                    </div>
+                  `
+                  : ''
+              }
             </div>
           `;
         })
@@ -423,6 +435,10 @@ export default function WardMap({ onWardSelect }) {
       vulnerability_score,
       final_risk_score,
       final_risk_band,
+      mortality_risk_index,
+      excess_mortality_pct,
+      predicted_excess_deaths,
+      predicted_hospitalizations,
       score_time,
     } = properties;
 
@@ -447,6 +463,10 @@ export default function WardMap({ onWardSelect }) {
       vulnerability_score,
       final_risk_score,
       final_risk_band,
+      mortality_risk_index,
+      excess_mortality_pct,
+      predicted_excess_deaths,
+      predicted_hospitalizations,
       score_time,
     };
 
@@ -542,6 +562,24 @@ export default function WardMap({ onWardSelect }) {
                 : 'N/A'
             }
           </p>
+
+          ${
+            mortality_risk_index !== null &&
+            mortality_risk_index !== undefined
+              ? `
+                <p style="margin: 3px 0;">
+                  <strong>Mortality Risk:</strong>
+                  ${mortality_risk_index}
+                  ${
+                    excess_mortality_pct !== null &&
+                    excess_mortality_pct !== undefined
+                      ? ` (+${excess_mortality_pct.toFixed(1)}% excess)`
+                      : ''
+                  }
+                </p>
+              `
+              : ''
+          }
 
           <p style="margin: 6px 0 0 0;">
             <strong>Final Risk Band:</strong>

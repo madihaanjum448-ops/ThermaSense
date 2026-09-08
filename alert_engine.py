@@ -16,13 +16,13 @@ Alert policy:
 """
 
 import os
-import requests
 from datetime import datetime, timezone
 
 from sqlalchemy import text
 from dotenv import load_dotenv
 
 from db import engine
+from alert_delivery import send_alert
 
 
 load_dotenv(override=True)
@@ -94,44 +94,6 @@ def get_previous_alert(ward_id: int):
 
     return dict(row._mapping) if row else None
 
-
-def send_webhook(
-    alert_id: int,
-    ward_id: int,
-    risk: dict,
-    message: str
-):
-    """Send an alert to the configured webhook."""
-    risk_band = risk.get("final_risk_band") or risk.get("risk_band")
-    final_score = float(
-        risk.get("final_risk_score")
-        if risk.get("final_risk_score") is not None
-        else risk.get("risk_score_raw", 0.0)
-    )
-
-    payload = {
-        "alert_id": alert_id,
-        "ward_id": ward_id,
-        "risk_band": risk_band,
-        "risk_score": final_score,
-        "raw_risk_score": float(risk.get("risk_score_raw", 0.0)),
-        "vulnerability_score": float(risk.get("vulnerability_score") or 0.0),
-        "heat_index_c": float(risk.get("heat_index_c", 0.0)),
-        "wbgt_c": float(risk.get("wbgt_c", 0.0)),
-        "utci_c": float(risk.get("utci_c", 0.0)),
-        "message": message,
-        "triggered_at": datetime.now(timezone.utc).isoformat(),
-    }
-
-    response = requests.post(
-        WEBHOOK_URL,
-        json=payload,
-        timeout=10,
-    )
-
-    response.raise_for_status()
-
-    return response
 
 
 def update_alert_status(alert_id: int, status: str):
@@ -244,7 +206,7 @@ def create_alert(ward_id: int, risk: dict):
                 "ward_id": ward_id,
                 "triggered_at": datetime.now(timezone.utc),
                 "risk_band": risk_band,
-                "channel": "webhook",
+                "channel": "sms",
                 "message": message,
                 "status": "pending",
                 "risk_score_id": risk_score_id,
@@ -254,8 +216,11 @@ def create_alert(ward_id: int, risk: dict):
         alert_id = result.scalar_one()
 
     # Deliver the alert through the webhook.
+   # Deliver the alert through SMS.
+    # Deliver the alert through SMS.
+        # Deliver the alert through the configured channel.
     try:
-        response = send_webhook(
+        delivery_response = send_alert(
             alert_id,
             ward_id,
             risk,
@@ -268,8 +233,8 @@ def create_alert(ward_id: int, risk: dict):
         )
 
         print(
-            f"Webhook delivered successfully. "
-            f"HTTP {response.status_code}"
+            f"Alert delivered successfully "
+            f"through {os.getenv('ALERT_CHANNEL', 'sms')}."
         )
 
     except Exception as exc:
@@ -279,7 +244,7 @@ def create_alert(ward_id: int, risk: dict):
         )
 
         print(
-            f"Webhook delivery failed: {exc}"
+            f"Alert delivery failed: {exc}"
         )
 
     return alert_id

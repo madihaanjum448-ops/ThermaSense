@@ -10,12 +10,12 @@ This prevents duplicate webhook alerts for the same forecast event.
 """
 
 from datetime import datetime, timezone
+import os
 
-import requests
 from sqlalchemy import text
 
 from db import engine
-from alert_engine import WEBHOOK_URL
+from alert_delivery import send_alert
 from forecast_alert_engine import check_forecast_warning
 
 
@@ -155,7 +155,7 @@ def send_forecast_warning(
                     timezone.utc
                 ),
                 "risk_band": risk_band,
-                "channel": "webhook",
+                "channel":os.getenv("ALERT_CHANNEL", "sms"),
                 "message": message,
                 "status": "pending",
                 "risk_score_id": risk_score_id,
@@ -168,45 +168,18 @@ def send_forecast_warning(
     # Deliver webhook
     # --------------------------------------------------
 
-    payload = {
-        "alert_id": alert_id,
-        "alert_type": "forecast_warning",
-        "ward_id": ward_id,
-        "risk_score_id": risk_score_id,
-        "risk_band": risk_band,
-        "risk_score": risk_score,
-        "raw_risk_score": float(
-            forecast.get("risk_score_raw", 0.0)
-        ),
-        "vulnerability_score": float(
-            forecast.get("vulnerability_score") or 0.0
-        ),
-        "heat_index_c": float(
-            forecast["heat_index_c"]
-        ),
-        "wbgt_c": float(
-            forecast["wbgt_c"]
-        ),
-        "utci_c": float(
-            forecast["utci_c"]
-        ),
-        "forecast_time": forecast_time.isoformat(),
-        "lead_time_hours": lead_hours,
-        "message": message,
-        "triggered_at": datetime.now(
-            timezone.utc
-        ).isoformat(),
-    }
+        # --------------------------------------------------
+    # Deliver forecast warning
+    # --------------------------------------------------
 
     try:
 
-        response = requests.post(
-            WEBHOOK_URL,
-            json=payload,
-            timeout=10,
+        delivery_response = send_alert(
+            alert_id,
+            ward_id,
+            forecast,
+            message,
         )
-
-        response.raise_for_status()
 
         with engine.begin() as conn:
 
@@ -224,8 +197,8 @@ def send_forecast_warning(
             )
 
         print(
-            f"Forecast warning delivered successfully. "
-            f"HTTP {response.status_code}"
+            f"Forecast warning delivered successfully "
+            f"through {os.getenv('ALERT_CHANNEL', 'sms')}."
         )
 
         return {
@@ -262,7 +235,6 @@ def send_forecast_warning(
             "risk_score_id": risk_score_id,
             "reason": str(exc),
         }
-
 
 def check_and_dispatch_forecast_warning(
     ward_id: int,

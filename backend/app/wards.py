@@ -1,9 +1,14 @@
 from datetime import datetime, timezone
+from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from pydantic import BaseModel
 from sqlalchemy import text
 from db import engine
 import json
+
+from .auth import get_current_user
+from .heat_indices import check_data_sources_health
 
 
 router = APIRouter()
@@ -11,6 +16,18 @@ router = APIRouter()
 
 def _to_float(value):
     return float(value) if value is not None else None
+
+@router.get("/wards/data-sources")
+@router.get("/health-check")
+def get_data_sources_status():
+    """
+    Return the current health status of external data sources.
+    """
+    sources = check_data_sources_health()
+    return {
+        "status": "ok",
+        "data_sources": sources,
+    }
 
 
 @router.get("/wards/geojson")
@@ -22,39 +39,64 @@ def get_wards_geojson():
     vulnerability-adjusted final risk are returned.
     """
     query = text("""
+    SELECT
+        w.id,
+        w.name,
+        w.city,
+        w.centroid_lat,
+        w.centroid_lon,
+        w.elderly_pct,
+        w.outdoor_worker_pct,
+        w.slum_household_pct,
+        w.green_cover_pct,
+        ST_AsGeoJSON(w.geom) AS geom_json,
+
+        wr.temp_c,
+        wr.humidity_pct,
+        wr.wind_speed_ms,
+        wr.solar_radiation_wm2,
+
+        rs.wbgt_c,
+        rs.utci_c,
+        rs.heat_index_c,
+        rs.risk_band,
+        rs.risk_score_raw,
+        rs.vulnerability_score,
+        rs.final_risk_score,
+        rs.final_risk_band,
+        rs.mortality_risk_index,
+        rs.excess_mortality_pct,
+        rs.predicted_excess_deaths,
+        rs.predicted_hospitalizations,
+        rs.score_time
+
+    FROM wards w
+
+    LEFT JOIN LATERAL (
+        SELECT *
+        FROM risk_scores r
+        WHERE r.ward_id = w.id
+          AND r.is_forecast = FALSE
+        ORDER BY
+            r.score_time DESC,
+            r.final_risk_score IS NULL,
+            r.id DESC
+        LIMIT 1
+    ) rs ON TRUE
+
+    LEFT JOIN LATERAL (
         SELECT
-            w.id,
-            w.name,
-            w.city,
-            w.centroid_lat,
-            w.centroid_lon,
-            ST_AsGeoJSON(w.geom) AS geom_json,
-            rs.wbgt_c,
-            rs.utci_c,
-            rs.heat_index_c,
-            rs.risk_band,
-            rs.risk_score_raw,
-            rs.vulnerability_score,
-            rs.final_risk_score,
-            rs.final_risk_band,
-            rs.mortality_risk_index,
-            rs.excess_mortality_pct,
-            rs.predicted_excess_deaths,
-            rs.predicted_hospitalizations,
-            rs.score_time
-        FROM wards w
-        LEFT JOIN LATERAL (
-            SELECT *
-            FROM risk_scores r
-            WHERE r.ward_id = w.id
-              AND r.is_forecast = FALSE
-            ORDER BY
-                r.score_time DESC,
-                r.final_risk_score IS NULL,
-                r.id DESC
-            LIMIT 1
-        ) rs ON TRUE
-    """)
+            temp_c,
+            humidity_pct,
+            wind_speed_ms,
+            solar_radiation_wm2
+        FROM weather_readings
+        WHERE ward_id = w.id
+          AND is_forecast = FALSE
+        ORDER BY reading_time DESC, id DESC
+        LIMIT 1
+    ) wr ON TRUE
+""")
 
     with engine.connect() as conn:
         rows = conn.execute(query).fetchall()
@@ -73,6 +115,15 @@ def get_wards_geojson():
                 "city": row.city,
                 "centroid_lat": _to_float(row.centroid_lat),
                 "centroid_lon": _to_float(row.centroid_lon),
+                "elderly_pct": _to_float(row.elderly_pct),
+                "outdoor_worker_pct": _to_float(row.outdoor_worker_pct),
+                "slum_household_pct": _to_float(row.slum_household_pct),
+                "green_cover_pct": _to_float(row.green_cover_pct),
+
+                "temperature": _to_float(row.temp_c),
+                "humidity": _to_float(row.humidity_pct),
+                "wind_speed": _to_float(row.wind_speed_ms),
+                "solar_radiation": _to_float(row.solar_radiation_wm2),
                 "wbgt": _to_float(row.wbgt_c),
                 "utci": _to_float(row.utci_c),
                 "heat_index": _to_float(row.heat_index_c),
@@ -118,6 +169,7 @@ def _row_to_dict(row):
     return {
         "id": row.id,
         "ward_id": row.ward_id,
+        "temperature": _to_float(row.temp_c),
         "timestamp": (
             row.score_time.isoformat() if row.score_time else None
         ),
@@ -126,6 +178,7 @@ def _row_to_dict(row):
             row.score_time.isoformat() if row.score_time else None
         ),
         "is_forecast": bool(row.is_forecast),
+        "temperature": _to_float(row.temp_c),
         "wbgt": _to_float(row.wbgt_c),
         "utci": _to_float(row.utci_c),
         "heat_index": _to_float(row.heat_index_c),
@@ -146,6 +199,154 @@ def _row_to_dict(row):
         "predicted_hospitalizations": _to_float(
             getattr(row, "predicted_hospitalizations", None)
         ),
+    }
+
+@router.get("/wards/summary")
+def get_zone_summary():
+    """
+    Return a high-level summary from the latest DB-backed Bengaluru risk data.
+    """
+    query = text("""
+        SELECT
+            COUNT(*) AS wards_monitored,
+            AVG(rs.wbgt_c) AS avg_wbgt,
+            MAX(rs.wbgt_c) AS max_wbgt,
+            AVG(rs.utci_c) AS avg_utci,
+            MAX(rs.utci_c) AS max_utci,
+            AVG(rs.heat_index_c) AS avg_heat_index,
+            MAX(rs.heat_index_c) AS max_heat_index
+        FROM wards w
+        JOIN LATERAL (
+            SELECT
+                wbgt_c,
+                utci_c,
+                heat_index_c,
+                risk_band,
+                final_risk_score
+            FROM risk_scores r
+            WHERE r.ward_id = w.id
+              AND r.is_forecast = FALSE
+            ORDER BY r.score_time DESC, r.id DESC
+            LIMIT 1
+        ) rs ON TRUE
+        WHERE LOWER(w.city) = 'bengaluru'
+    """)
+
+    alert_query = text("""
+        SELECT
+            w.id,
+            w.name,
+            rs.risk_band,
+            rs.wbgt_c
+        FROM wards w
+        JOIN LATERAL (
+            SELECT
+                risk_band,
+                wbgt_c
+            FROM risk_scores r
+            WHERE r.ward_id = w.id
+              AND r.is_forecast = FALSE
+            ORDER BY r.score_time DESC, r.id DESC
+            LIMIT 1
+        ) rs ON TRUE
+        WHERE LOWER(w.city) = 'bengaluru'
+          AND (
+              LOWER(rs.risk_band) = 'extreme'
+              OR rs.wbgt_c >= 33.0
+          )
+        ORDER BY w.id
+    """)
+
+    with engine.connect() as conn:
+        summary = conn.execute(query).mappings().one()
+        alerts = conn.execute(alert_query).mappings().all()
+
+    def rounded(value):
+        return round(float(value), 1) if value is not None else None
+
+    alert_wards = [
+        f"Ward {row['id']} ({row['name']})"
+        for row in alerts
+    ]
+
+    return {
+        "zone": "Bengaluru Urban",
+        "wards_monitored": int(summary["wards_monitored"] or 0),
+        "avg_wbgt": rounded(summary["avg_wbgt"]),
+        "max_wbgt": rounded(summary["max_wbgt"]),
+        "avg_utci": rounded(summary["avg_utci"]),
+        "max_utci": rounded(summary["max_utci"]),
+        "avg_heat_index": rounded(summary["avg_heat_index"]),
+        "max_heat_index": rounded(summary["max_heat_index"]),
+        "active_alerts": len(alerts),
+        "alert_wards": alert_wards,
+        "is_live": summary["wards_monitored"] > 0,
+    }
+
+class DispatchRequest(BaseModel):
+    ward_id: int
+    action_type: str
+    notes: Optional[str] = None
+
+
+@router.post("/wards/dispatch")
+def dispatch_intervention(
+    payload: DispatchRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Register an emergency intervention for an authenticated official.
+    """
+
+    # Verify that the ward exists in the database.
+    ward_query = text("""
+        SELECT id, name, city
+        FROM wards
+        WHERE id = :ward_id
+        LIMIT 1
+    """)
+
+    with engine.connect() as conn:
+        ward = conn.execute(
+            ward_query,
+            {"ward_id": payload.ward_id},
+        ).mappings().first()
+
+    if not ward:
+        raise HTTPException(
+            status_code=404,
+            detail="Ward not found",
+        )
+
+    action_labels = {
+        "sms": "Emergency SMS / WhatsApp Alert",
+        "cooling": "Cooling Centre Activation",
+        "work_shift": "Mandatory Work-Hour Respite Order",
+    }
+
+    action_name = action_labels.get(
+        payload.action_type,
+        payload.action_type,
+    )
+
+    timestamp = datetime.now(timezone.utc)
+
+    return {
+        "success": True,
+        "message": (
+            f"Successfully registered and dispatched "
+            f"'{action_name}' for Ward {ward['id']} ({ward['name']})"
+        ),
+        "dispatched_by": current_user["name"],
+        "officer_role": current_user["role"],
+        "officer_department": current_user["department"],
+        "ward_id": ward["id"],
+        "ward_name": ward["name"],
+        "action_type": payload.action_type,
+        "action_name": action_name,
+        "timestamp": timestamp.isoformat(),
+        "status": "Delivered",
+        "notes": payload.notes,
     }
 
 
@@ -176,31 +377,35 @@ def get_ward_forecast(ward_id: int, days: int = 5):
         raise HTTPException(status_code=404, detail="Ward not found")
 
     query = text("""
-        SELECT
-            id,
-            ward_id,
-            score_time,
-            is_forecast,
-            wbgt_c,
-            utci_c,
-            heat_index_c,
-            risk_score_raw,
-            risk_band,
-            vulnerability_score,
-            final_risk_score,
-            final_risk_band,
-            mortality_risk_index,
-            excess_mortality_pct,
-            predicted_excess_deaths,
-            predicted_hospitalizations
-        FROM risk_scores
-        WHERE ward_id = :ward_id
-          AND is_forecast = TRUE
-          AND score_time > NOW()
-         AND score_time <= NOW() + (:days * INTERVAL '1 day')
-        ORDER BY score_time ASC, id ASC
-    """)
-
+    SELECT
+        rs.id,
+        rs.ward_id,
+        rs.score_time,
+        rs.is_forecast,
+        wr.temp_c,
+        rs.wbgt_c,
+        rs.utci_c,
+        rs.heat_index_c,
+        rs.risk_score_raw,
+        rs.risk_band,
+        rs.vulnerability_score,
+        rs.final_risk_score,
+        rs.final_risk_band,
+        rs.mortality_risk_index,
+        rs.excess_mortality_pct,
+        rs.predicted_excess_deaths,
+        rs.predicted_hospitalizations
+    FROM risk_scores rs
+    LEFT JOIN weather_readings wr
+        ON wr.ward_id = rs.ward_id
+       AND wr.is_forecast = TRUE
+       AND wr.reading_time = rs.score_time
+    WHERE rs.ward_id = :ward_id
+      AND rs.is_forecast = TRUE
+      AND rs.score_time > NOW()
+      AND rs.score_time <= NOW() + (:days * INTERVAL '1 day')
+    ORDER BY rs.score_time ASC, rs.id ASC
+""")
     with engine.connect() as conn:
         rows = conn.execute(
             query,

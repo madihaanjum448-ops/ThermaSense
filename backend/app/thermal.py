@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Query, HTTPException
-from pythermalcomfort.models import heat_index_rothfusz, wbgt, utci
+from pythermalcomfort.models import heat_index_lu, wbgt, utci
 import math
 from .derivation import derive_thermal_inputs
 
@@ -22,7 +22,11 @@ def get_heat_index(
             detail="Dry-bulb temperature (tdb) must be between -10°C and 60°C"
         )
     rh = max(0.0, min(100.0, rh))
-    result = heat_index_rothfusz(tdb=tdb, rh=rh)
+    result = heat_index_lu(
+    tdb=tdb,
+    rh=rh,
+    round_output=False
+)
     return {"heat_index": result.hi}
 
 @router.get("/wbgt")
@@ -119,7 +123,11 @@ def get_derive_all(
     )
 
     # Calculate Heat Index
-    hi_result = heat_index_rothfusz(tdb=temp_c, rh=humidity)
+    hi_result = heat_index_lu(
+    tdb=temp_c,
+    rh=humidity,
+    round_output=False
+)
 
     # Calculate WBGT
     wbgt_result = wbgt(twb=derived["twb_natural"], tg=derived["tg"], tdb=temp_c, with_solar_load=True)

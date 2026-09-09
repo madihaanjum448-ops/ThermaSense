@@ -1,5 +1,5 @@
 import math
-from datetime import datetime
+from datetime import datetime,timezone
 import numpy as np
 
 from .liljegren import solve_globe, solve_wetbulb, wind_speed_2m, kelvin_to_celsius, celsius_to_kelvin
@@ -118,15 +118,19 @@ def derive_thermal_inputs(
     and mean radiant temperature (Tr) using the Liljegren 2008 model,
     accounting for humidity-based atmospheric solar attenuation.
     """
-    if timestamp.endswith("Z"):
-        dt_utc = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-    else:
-        dt_utc = datetime.fromisoformat(timestamp)
+    dt_utc = datetime.fromisoformat(
+    timestamp.replace("Z", "+00:00")
+)
 
-    # Assume UTC if no timezone info is present
+# Timestamp must contain timezone information.
     if dt_utc.tzinfo is None:
-        raise ValueError("Timestamp must include timezone information (e.g. UTC 'Z' or offset).")
+        raise ValueError(
+        "Timestamp must include timezone information "
+        "(e.g. UTC 'Z' or offset)."
+    )
 
+# Convert any timezone offset to UTC before solar calculations.
+    dt_utc = dt_utc.astimezone(timezone.utc)
     # Assumptions/Defaults
     if pressure_hpa is None:
         # Standard sea-level pressure assumption if not provided

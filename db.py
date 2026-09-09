@@ -176,5 +176,3 @@ def latest_reading(ward_id: int, source: str | None = None):
         query += " ORDER BY reading_time DESC LIMIT 1"
         row = conn.execute(text(query), params).fetchone()
         return dict(row._mapping) if row else None
-
-metadata.create_all(engine)

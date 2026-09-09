@@ -106,13 +106,13 @@ def fetch_solar_radiation(
             "date": <actual NASA POWER date>
         }
 
-    Returns None if no usable value is found within 7 days.
+    Returns None if no usable value is found within 30 days.
     """
 
     if target_date is None:
         target_date = date.today() - timedelta(days=2)
 
-    for days_back in range(0, 8):
+    for days_back in range(0, 31):
 
         candidate_date = (
             target_date - timedelta(days=days_back)

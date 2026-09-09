@@ -197,7 +197,7 @@ def get_ward_forecast(ward_id: int, days: int = 5):
         WHERE ward_id = :ward_id
           AND is_forecast = TRUE
           AND score_time > NOW()
-          AND score_time <= NOW() + (:days || ' days')::interval
+         AND score_time <= NOW() + (:days * INTERVAL '1 day')
         ORDER BY score_time ASC, id ASC
     """)
 

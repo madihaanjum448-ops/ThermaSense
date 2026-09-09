@@ -94,6 +94,36 @@ def get_previous_alert(ward_id: int):
 
     return dict(row._mapping) if row else None
 
+def get_previous_risk_band(ward_id: int, current_risk_id: int):
+    """
+    Get the immediately previous CURRENT risk score for a ward.
+    """
+
+    with engine.connect() as conn:
+        row = conn.execute(
+            text(
+                """
+                SELECT
+                    id,
+                    risk_band,
+                    final_risk_band,
+                    score_time
+                FROM risk_scores
+                WHERE ward_id = :ward_id
+                  AND is_forecast = FALSE
+                  AND id < :current_risk_id
+                ORDER BY score_time DESC, id DESC
+                LIMIT 1
+                """
+            ),
+            {
+                "ward_id": ward_id,
+                "current_risk_id": current_risk_id,
+            },
+        ).fetchone()
+
+    return dict(row._mapping) if row else None
+
 
 
 def update_alert_status(alert_id: int, status: str):
@@ -144,25 +174,14 @@ def create_alert(ward_id: int, risk: dict):
     if previous:
         previous_band = previous["risk_band"]
 
-        # If the ward remains at the same severity or moves
-        # to a less severe state, do not send another alert.
         if severity[risk_band] <= severity[previous_band]:
             print(
-                f"No new alert. Ward {ward_id} remains "
-                f"{risk_band.upper()} risk."
+            f"No new alert. Ward {ward_id} remains "
+            f"{risk_band.upper()} risk."
             )
             return None
 
-        # If we get here:
-        # previous = HIGH
-        # current  = EXTREME
-        #
-        # This is a genuine escalation, so send an alert.
-        print(
-            f"Risk escalation detected: "
-            f"{previous_band.upper()} -> {risk_band.upper()}"
-        )
-
+    
     message = (
         f"{risk_band.upper()} heat risk detected for ward {ward_id}. "
         f"Risk score: {final_score}, "
@@ -239,16 +258,16 @@ def create_alert(ward_id: int, risk: dict):
 
     except Exception as exc:
         update_alert_status(
-            alert_id,
-            "failed"
+        alert_id,
+        "failed"
         )
 
         print(
-            f"Alert delivery failed: {exc}"
+        f"Alert delivery failed: {exc}"
         )
+        return None
 
     return alert_id
-
 
 def check_and_alert(ward_id: int):
     """

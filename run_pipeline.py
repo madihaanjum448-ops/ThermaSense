@@ -29,6 +29,7 @@ from forecast_risk_engine import run_forecast_for_ward
 from forecast_warning_dispatcher import (
     check_and_dispatch_forecast_warning,
 )
+from cleanup_forecasts import cleanup_forecasts
 
 
 def store_forecast(ward_id: int, forecast: list):
@@ -372,6 +373,19 @@ def run_pipeline():
             )
 
             print("-" * 60)
+
+    try:
+        cleanup_result = cleanup_forecasts()
+
+        print(
+            "Forecast cleanup completed: "
+            f"{cleanup_result}"
+        )
+
+    except Exception as exc:
+        print(
+            f"Forecast cleanup failed: {exc}"
+        )
 
     print(
         "\nPIPELINE COMPLETED SUCCESSFULLY"

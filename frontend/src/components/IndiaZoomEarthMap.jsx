@@ -28,6 +28,7 @@ import {
   RotateCcw,
   Layers,
   ChevronDown,
+  MapPin,
 } from 'lucide-react';
 
 const BASEMAPS = {
@@ -207,6 +208,16 @@ export default function IndiaZoomEarthMap({
   const stateWards = activeState?.wards || [];
   const activeWard = selectedWard || stateWards[0] || ALL_INDIA_WARDS[0];
 
+  // If selectedWard changes, fly to it
+  useEffect(() => {
+    if (selectedWard && selectedWard.stateId) {
+      if (selectedStateId !== selectedWard.stateId) {
+        if (onSelectState) onSelectState(selectedWard.stateId);
+      }
+      setIsAllIndiaView(false);
+    }
+  }, [selectedWard]);
+
   const handleStateSelect = (e) => {
     const stateId = e.target.value;
     if (stateId === 'all_india') {
@@ -228,13 +239,13 @@ export default function IndiaZoomEarthMap({
   const handleSelectSpecificWard = (ward) => {
     setIsAllIndiaView(false);
     onSelectWard(ward);
-    onSelectState(ward.stateId);
+    if (onSelectState) onSelectState(ward.stateId);
   };
 
   const mapCenter = isAllIndiaView
     ? ALL_INDIA_CENTER
-    : activeState?.center || ALL_INDIA_CENTER;
-  const mapZoom = isAllIndiaView ? ALL_INDIA_ZOOM : activeState?.zoom || 7;
+    : (activeWard?.coordinates || activeState?.center || ALL_INDIA_CENTER);
+  const mapZoom = isAllIndiaView ? ALL_INDIA_ZOOM : (activeWard?.coordinates ? 8 : (activeState?.zoom || 7));
 
   // Custom Layer-specific color schemes matching light UI theme
   const getFeatureStyle = (ward) => {
@@ -348,11 +359,11 @@ export default function IndiaZoomEarthMap({
           )}
 
           <div className="ze-active-ward-pill">
-            <span className="ze-live-dot"></span>
+            <MapPin size={12} className="text-sky-600" />
             <span>
               {isAllIndiaView
-                ? 'All-India Overview'
-                : `${activeState.name} · ${activeWard.city}`}
+                ? 'All-India National Overview'
+                : `${activeState.name} · ${activeWard.name || activeWard.city}`}
             </span>
           </div>
         </div>
@@ -365,16 +376,15 @@ export default function IndiaZoomEarthMap({
         {/* ============================================================
             FLOATING LAYER SWITCHER (Clean Light Glassmorphism)
         ============================================================= */}
-        <aside className="ze-floating-sidebar" aria-label="Forecast and Live Map Layers">
+        <aside className="ze-floating-sidebar" aria-label="Forecast and Map Layers">
           <div className="ze-sidebar-header">
             <div className="ze-brand-logo">
               <span className="ze-brand-title">ZOOM EARTH</span>
             </div>
-            <span className="ze-tag-live">LIVE</span>
           </div>
 
           <div className="ze-sidebar-scroll">
-            {/* LIVE BASEMAP TILES */}
+            {/* BASEMAP TILES */}
             <div className="ze-menu-group">
               <div className="ze-group-heading">
                 {lang === 'hi' ? 'बेस मैप' : 'BASE MAP'}
@@ -519,7 +529,7 @@ export default function IndiaZoomEarthMap({
 
             const badgeHtml = `
               <div class="ze-city-pill light-pill ${isSelected ? 'is-selected' : ''}">
-                <span class="ze-pill-city">${ward.city}</span>
+                <span class="ze-pill-city">${ward.name || ward.city}</span>
                 <span class="ze-pill-val ${isSelected ? 'is-selected' : ''}">${displayVal}</span>
               </div>
             `;
@@ -527,8 +537,8 @@ export default function IndiaZoomEarthMap({
             const customIcon = L.divIcon({
               className: 'ze-custom-div-icon',
               html: badgeHtml,
-              iconSize: [88, 22],
-              iconAnchor: [44, 11],
+              iconSize: [110, 22],
+              iconAnchor: [55, 11],
             });
 
             return (
@@ -542,8 +552,8 @@ export default function IndiaZoomEarthMap({
               >
                 <Tooltip direction="top" offset={[0, -10]} opacity={0.96}>
                   <div className="ze-map-tooltip light-tooltip">
-                    <strong>{ward.city} · {ward.wardNumber}: {ward.name}</strong>
-                    <div>State: <b>{ward.stateName}</b></div>
+                    <strong>{ward.name}, {ward.city}</strong>
+                    <div>State: <b>{ward.stateName}</b> · Zone: <b>{ward.zone || ward.wardNumber}</b></div>
                     <div>Temp: <b>{ward.temperature}°C</b> | WBGT: <b>{ward.wbgt}°C</b> | Hum: <b>{ward.humidity}%</b></div>
                     <div>Risk Band: <span style={{ color: ward.riskBand === 'Extreme' ? '#ef4444' : ward.riskBand === 'Warning' ? '#ea580c' : '#16a34a', fontWeight: 800 }}>{ward.riskBand}</span></div>
                   </div>
@@ -733,7 +743,6 @@ export default function IndiaZoomEarthMap({
 
           <div className="ze-timeline-datetime">
             <span className="ze-time-label">9 Sept · {currentTimeStr}</span>
-            <span className="ze-tag-live">LIVE</span>
           </div>
 
           {/* Time Scrubber */}

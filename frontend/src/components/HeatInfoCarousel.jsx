@@ -92,7 +92,6 @@ export default function HeatInfoCarousel({ onNavigateDashboard }) {
             <div className="slide-split-info">
               <div className="split-badge-row">
                 <span className="split-status-pill">
-                  <span className="cta-live-dot"></span>
                   NATIONAL NWP MODELING
                 </span>
                 <span className="source-tag">IMD & NDMA Framework</span>
@@ -145,7 +144,6 @@ export default function HeatInfoCarousel({ onNavigateDashboard }) {
             <div className="slide-split-info split-card-navy">
               <div className="split-badge-row">
                 <span className="split-status-pill pill-live-green">
-                  <span className="cta-live-dot"></span>
                   OPERATIONAL CONSOLE
                 </span>
               </div>

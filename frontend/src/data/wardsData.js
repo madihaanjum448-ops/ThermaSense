@@ -448,7 +448,7 @@ export const TRANSLATIONS = {
     appTitle: 'ThermaSense',
     appSubtitle: 'National Heat Stress Early Warning System',
     skipToMain: 'Skip to main content',
-    liveDataPrefix: 'Live data — updated',
+    liveDataPrefix: 'Telemetry updated',
     minAgo: 'min ago',
     justNow: 'just now',
     refreshData: 'Refresh Data',
@@ -513,7 +513,7 @@ export const TRANSLATIONS = {
     
     // Section 4 — Forecast Strip
     forecastTitle: '5-Day Heat Stress Forecast',
-    forecastSubtitle: 'High-resolution meteorological & physiological thermal trajectory (Open-Meteo NWP)',
+    forecastSubtitle: 'High-resolution meteorological & physiological thermal trajectory',
     dayToday: 'Today',
     dayWed: 'Wed',
     dayThu: 'Thu',
@@ -566,7 +566,7 @@ export const TRANSLATIONS = {
     appTitle: 'थर्मासेंस (ThermaSense)',
     appSubtitle: 'राष्ट्रीय ताप तनाव पूर्व चेतावनी प्रणाली',
     skipToMain: 'मुख्य सामग्री पर जाएं',
-    liveDataPrefix: 'लाइव डेटा — अद्यतन',
+    liveDataPrefix: 'टेलीमेट्री अद्यतन',
     minAgo: 'मिनट पहले',
     justNow: 'अभी-अभी',
     refreshData: 'डेटा रीफ्रेश करें',
@@ -631,7 +631,7 @@ export const TRANSLATIONS = {
     
     // Section 4 — Forecast Strip
     forecastTitle: '5-दिवसीय ताप तनाव पूर्वानुमान',
-    forecastSubtitle: 'उच्च-सटीकता मौसम विज्ञान एवं शारीरिक थर्मल प्रक्षेपवक्र (Open-Meteo NWP)',
+    forecastSubtitle: 'उच्च-सटीकता मौसम विज्ञान एवं शारीरिक थर्मल प्रक्षेपवक्र',
     dayToday: 'आज',
     dayWed: 'बुध',
     dayThu: 'गुरु',

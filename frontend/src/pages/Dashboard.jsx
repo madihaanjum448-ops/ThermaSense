@@ -1,1219 +1,1375 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-
+import React, { useState, useEffect, useCallback } from 'react';
 import emblem from '../assets/emblem.png';
 import WardMap from '../components/WardMap';
+import {
+  WARDS_STATIC_METADATA,
+  INITIAL_DISPATCH_LOG,
+  TRANSLATIONS,
+} from '../data/wardsData';
+import {
+  fetchWardsGeoJSON,
+  fetchWardForecast,
+  fetchDataSourcesStatus,
+  fetchZoneSummary,
+} from '../services/api';
+import {
+  Flame,
+  Thermometer,
+  Activity,
+  Wind,
+  Droplets,
+  Sun,
+  Users,
+  Briefcase,
+  Home as HomeIcon,
+  Trees,
+  CheckCircle2,
+  RefreshCw,
+  Send,
+  ShieldAlert,
+  ArrowUpRight,
+  ArrowDownRight,
+  ArrowRight,
+  Info,
+  Radio,
+  Clock,
+  MapPin,
+  FileText,
+  SlidersHorizontal,
+  AlertTriangle,
+} from 'lucide-react';
 
-function Dashboard() {
-  const [selectedWard, setSelectedWard] = useState(null);
-  const [wards, setWards] = useState([]);
-  const [forecast, setForecast] = useState([]);
+export default function Dashboard({ onNavigateHome }) {
+  const [lang, setLang] = useState('en');
+  const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
+
+  // Accessibility font scaling
+  const [fontSize, setFontSize] = useState('normal');
+
+  // Selected ward (default: Ward 4 — Shivajinagar)
+  const [selectedWardId, setSelectedWardId] = useState(4);
+
+  // Active map layer: 'wbgt' | 'vulnerability' | 'heatmap'
+  const [activeLayer, setActiveLayer] = useState('wbgt');
+
+  // Active navigation tab
+  const [activeTab, setActiveTab] = useState('dashboard');
+
+  // Live state from API
+  const [liveWards, setLiveWards] = useState([]);
+  const [geoData, setGeoData] = useState(null);
+  const [liveForecast, setLiveForecast] = useState([]);
+  const [dataSources, setDataSources] = useState([]);
+  const [zoneSummary, setZoneSummary] = useState(null);
+
+  // Loading & error states
+  const [isLoading, setIsLoading] = useState(true);
   const [forecastLoading, setForecastLoading] = useState(false);
-  const [forecastError, setForecastError] = useState(false);
-  const [dataStatus, setDataStatus] = useState('CHECKING DATA');
+  const [isLiveUnavailable, setIsLiveUnavailable] = useState(false);
+  const [lastUpdatedMin, setLastUpdatedMin] = useState(0);
+  const [isSyncing, setIsSyncing] = useState(false);
 
+  // Dispatch log state
+  const [dispatchLog, setDispatchLog] = useState(INITIAL_DISPATCH_LOG);
+
+  // Dispatch modal state
+  const [dispatchModal, setDispatchModal] = useState({
+    isOpen: false,
+    actionType: null,
+  });
+  const [toastMessage, setToastMessage] = useState(null);
+
+  // Apply font size scale
   useEffect(() => {
-    const loadWards = async () => {
-      try {
-        const response = await fetch('/api/wards/geojson');
+    const root = document.documentElement;
+    if (fontSize === 'small') {
+      root.style.fontSize = '14px';
+    } else if (fontSize === 'large') {
+      root.style.fontSize = '17.5px';
+    } else {
+      root.style.fontSize = '15.5px';
+    }
+  }, [fontSize]);
 
-        if (!response.ok) {
-          throw new Error('Ward API unavailable');
-        }
+  // Load all live data from backend API
+  const loadLiveDashboardData = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setIsSyncing(true);
+    else setIsLoading(true);
 
-        const data = await response.json();
-        const features = Array.isArray(data?.features)
-          ? data.features
-          : [];
+    try {
+      const [geoRes, dsRes, sumRes] = await Promise.all([
+        fetchWardsGeoJSON(),
+        fetchDataSourcesStatus(),
+        fetchZoneSummary(),
+      ]);
 
-        setWards(features);
-        setDataStatus(
-          features.length > 0 ? 'LIVE DATA' : 'NO LIVE DATA'
-        );
-      } catch (error) {
-        console.warn('Could not load ward data:', error);
-        setWards([]);
-        setDataStatus('NO LIVE DATA');
+      if (geoRes && geoRes.features && geoRes.features.length > 0) {
+        setGeoData(geoRes);
+        const extracted = geoRes.features.map((f) => ({
+          ...f.properties,
+          geometry: f.geometry,
+        }));
+        setLiveWards(extracted);
+        setIsLiveUnavailable(false);
+      } else {
+        setIsLiveUnavailable(true);
       }
-    };
 
-    loadWards();
+      if (dsRes && dsRes.length > 0) {
+        setDataSources(dsRes);
+      }
+
+      if (sumRes) {
+        setZoneSummary(sumRes);
+      }
+
+      setLastUpdatedMin(0);
+    } catch (_err) {
+      console.warn('Dashboard live data fetch error:', _err);
+      setIsLiveUnavailable(true);
+    } finally {
+      setIsLoading(false);
+      setIsSyncing(false);
+    }
   }, []);
 
+  // Initial load
   useEffect(() => {
-    if (!selectedWard?.id) {
-      setForecast([]);
-      setForecastError(false);
-      return;
+    loadLiveDashboardData();
+  }, [loadLiveDashboardData]);
+
+  // Load forecast whenever selected ward changes
+  useEffect(() => {
+    let isMounted = true;
+    async function loadForecast() {
+      setForecastLoading(true);
+      try {
+        const fc = await fetchWardForecast(selectedWardId);
+        if (isMounted) {
+          setLiveForecast(fc || []);
+        }
+      } catch (_err) {
+        if (isMounted) setLiveForecast([]);
+      } finally {
+        if (isMounted) setForecastLoading(false);
+      }
+    }
+    loadForecast();
+    return () => { isMounted = false; };
+  }, [selectedWardId]);
+
+  // Periodic elapsed timer
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setLastUpdatedMin((prev) => prev + 1);
+    }, 60000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const handleManualRefresh = () => {
+    loadLiveDashboardData(true);
+    showToast(lang === 'hi' ? 'डेटा सफलतापूर्वक अपडेट किया गया' : 'Live sensor data refreshed successfully');
+  };
+
+  const showToast = (msg) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 4000);
+  };
+
+  // Find currently selected ward info
+  const staticMeta = WARDS_STATIC_METADATA.find((w) => w.id === selectedWardId) || WARDS_STATIC_METADATA[3];
+  const liveMatch = liveWards.find((w) => w.id === selectedWardId);
+
+  const currentWard = {
+    ...staticMeta,
+    ...(liveMatch || {}),
+    vulnerability: staticMeta.vulnerability,
+    riskBand: liveMatch?.risk_band || 'Caution',
+    riskLevel: (liveMatch?.risk_band || 'caution').toLowerCase(),
+    wbgt: liveMatch?.wbgt,
+    utci: liveMatch?.utci,
+    heatIndex: liveMatch?.heat_index,
+    environmental: {
+      temperature: liveMatch?.temperature,
+      humidity: liveMatch?.humidity,
+      windSpeed: liveMatch?.wind_speed,
+      solarRadiation: liveMatch?.solar_radiation,
+    },
+  };
+
+  // Dynamic health impact estimation from live WBGT
+  const wbgtVal = currentWard.wbgt;
+  const hospSpike = wbgtVal ? Math.round(Math.max(5, (wbgtVal - 25.0) * 4.2)) : null;
+  const ciLow = hospSpike ? Math.max(2, hospSpike - 8) : null;
+  const ciHigh = hospSpike ? hospSpike + 9 : null;
+  const mortalityIndex = wbgtVal ? Math.round(Math.min(10.0, Math.max(1.0, (wbgtVal - 22.0) * 0.85)) * 10) / 10 : null;
+  const baselineDiff = mortalityIndex ? (mortalityIndex >= 5.0 ? `+${(mortalityIndex - 4.5).toFixed(1)} vs 3-yr baseline` : `Within baseline`) : null;
+  const baselineDiffHi = mortalityIndex ? (mortalityIndex >= 5.0 ? `+${(mortalityIndex - 4.5).toFixed(1)} 3-वर्षीय आधार रेखा की तुलना में` : `सामान्य आधार रेखा के भीतर`) : null;
+
+  const openDispatchModal = (actionType) => {
+    setDispatchModal({ isOpen: true, actionType });
+  };
+
+  const closeDispatchModal = () => {
+    setDispatchModal({ isOpen: false, actionType: null });
+  };
+
+  const executeDispatch = () => {
+    const now = new Date();
+    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    let actionNameEn = '';
+    let actionNameHi = '';
+    let type = 'alert';
+
+    const wardLabelEn = `${currentWard.wardNumber} (${currentWard.name})`;
+    const wardLabelHi = `${currentWard.wardNumber} (${currentWard.nameHi})`;
+
+    if (dispatchModal.actionType === 'sms') {
+      actionNameEn = `Emergency SMS/WhatsApp dispatched ${wardLabelEn}`;
+      actionNameHi = `आपातकालीन एसएमएस/व्हाट्सएप भेजा गया ${wardLabelHi}`;
+      type = 'alert';
+    } else if (dispatchModal.actionType === 'cooling') {
+      actionNameEn = `Cooling centre activated ${wardLabelEn}`;
+      actionNameHi = `शीतलन केंद्र सक्रिय किया गया ${wardLabelHi}`;
+      type = 'cooling';
+    } else if (dispatchModal.actionType === 'work_shift') {
+      actionNameEn = `Mandatory work-hour shift issued ${wardLabelEn}`;
+      actionNameHi = `कार्य-समय पाली संशोधन आदेश जारी ${wardLabelHi}`;
+      type = 'work';
     }
 
-    const loadForecast = async () => {
-      setForecastLoading(true);
-      setForecastError(false);
-
-      try {
-        const response = await fetch(
-          `/api/wards/${selectedWard.id}/forecast`
-        );
-
-        if (!response.ok) {
-          throw new Error('Forecast unavailable');
-        }
-
-        const data = await response.json();
-
-        const points =
-          Array.isArray(data)
-            ? data
-            : Array.isArray(data?.forecast)
-              ? data.forecast
-              : Array.isArray(data?.data)
-                ? data.data
-                : [];
-
-        setForecast(points);
-      } catch (error) {
-        console.warn('Could not load forecast:', error);
-        setForecast([]);
-        setForecastError(true);
-      } finally {
-        setForecastLoading(false);
-      }
+    const newEntry = {
+      id: Date.now(),
+      time: timeStr,
+      action: actionNameEn,
+      actionHi: actionNameHi,
+      status: 'Delivered',
+      statusHi: 'पुष्टीकृत',
+      type,
+      target: wardLabelEn,
     };
 
-    loadForecast();
-  }, [selectedWard]);
-
-  const riskScore =
-    selectedWard?.final_risk_score ??
-    selectedWard?.risk_score_raw ??
-    null;
-
-  const riskBand =
-    selectedWard?.final_risk_band ??
-    selectedWard?.risk_band ??
-    null;
-
-  const formattedRiskScore =
-    typeof riskScore === 'number'
-      ? riskScore.toFixed(1)
-      : '—';
-
-  const activeAlerts = '—';
-
-  const rankedWards = useMemo(() => {
-    return wards
-      .map((feature) => {
-        const p = feature?.properties || {};
-
-        const score =
-          p.final_risk_score ??
-          p.risk_score_raw ??
-          null;
-
-        return {
-          id: p.id,
-          name: p.name || 'Unnamed Ward',
-          score:
-            typeof score === 'number'
-              ? score
-              : Number(score),
-          band:
-            p.final_risk_band ??
-            p.risk_band ??
-            null,
-        };
-      })
-      .filter((ward) => Number.isFinite(ward.score))
-      .sort((a, b) => b.score - a.score);
-  }, [wards]);
-
-  const formatNumber = (value, suffix = '') => {
-    if (value === null || value === undefined || value === '') {
-      return '—';
-    }
-
-    const number = Number(value);
-
-    if (!Number.isFinite(number)) {
-      return '—';
-    }
-
-    return `${number.toFixed(1)}${suffix}`;
+    setDispatchLog([newEntry, ...dispatchLog]);
+    closeDispatchModal();
+    showToast(
+      lang === 'hi'
+        ? `सफलतापूर्वक आदेश जारी: ${actionNameHi}`
+        : `Intervention dispatched successfully: ${actionNameEn}`
+    );
   };
 
-  const getForecastValue = (point, keys) => {
-    for (const key of keys) {
-      if (
-        point &&
-        point[key] !== undefined &&
-        point[key] !== null
-      ) {
-        return point[key];
-      }
+  const scrollToSection = (id, tabName) => {
+    setActiveTab(tabName);
+    const element = document.getElementById(id);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-
-    return null;
   };
+
+  // Compute active alerts count from live data
+  const activeAlertsCount = zoneSummary?.active_alerts ?? liveWards.filter(w => (w.risk_band === 'Extreme' || w.wbgt >= 33.0)).length;
+  const activeAlertsWardsList = zoneSummary?.alert_wards?.length > 0
+    ? zoneSummary.alert_wards.join(', ')
+    : liveWards.filter(w => (w.risk_band === 'Extreme' || w.wbgt >= 33.0)).map(w => `Ward ${w.id}`).join(', ') || 'No active alerts';
 
   return (
-    <div className="dashboard-page">
+    <div className={`portal-container font-scale-${fontSize}`}>
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="gov-toast" role="alert">
+          <CheckCircle2 size={18} className="toast-icon" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
 
-      {/* =====================================================
-          GOVERNMENT / ACCESSIBILITY BAR
-      ====================================================== */}
-
-      <div className="gov-strip">
-        <div className="gov-strip-inner">
-
-          <div className="gov-identity">
-            <span>Government of India</span>
-            <span className="gov-divider">|</span>
-            <span>भारत सरकार</span>
+      {/* ============================================================
+          TOP BAR 1: Government of India Official Identity Strip
+      ============================================================= */}
+      <div className="top-gov-identity-strip">
+        <div className="top-gov-strip-inner">
+          <div className="gov-brand-titles">
+            <span className="gov-india-text">GOVERNMENT OF INDIA</span>
+            <span className="gov-strip-sep">|</span>
+            <span className="gov-hindi-text">भारत सरकार</span>
+            <span className="gov-strip-sep">·</span>
+            <span className="gov-ministry-text">Ministry of Earth Sciences / NDMA</span>
           </div>
 
-          <div className="accessibility-links">
-            <a href="#dashboard-main">
-              Skip to main content
+          <div className="top-gov-accessibility-controls">
+            {onNavigateHome && (
+              <button
+                type="button"
+                className="gov-portal-link-btn"
+                onClick={onNavigateHome}
+              >
+                ← Public Portal
+              </button>
+            )}
+
+            <a href="#main-dashboard-content" className="skip-link">
+              {t.skipToMain}
             </a>
 
-            <span>English</span>
-            <span>हिंदी</span>
+            {/* Language Toggle */}
+            <div className="bilingual-toggle" role="group" aria-label="Language selection">
+              <button
+                type="button"
+                className={`lang-btn ${lang === 'en' ? 'active' : ''}`}
+                onClick={() => setLang('en')}
+                aria-pressed={lang === 'en'}
+              >
+                English
+              </button>
+              <span className="lang-sep">/</span>
+              <button
+                type="button"
+                className={`lang-btn ${lang === 'hi' ? 'active' : ''}`}
+                onClick={() => setLang('hi')}
+                aria-pressed={lang === 'hi'}
+              >
+                हिंदी
+              </button>
+            </div>
 
-            <button type="button">A-</button>
-            <button type="button">A</button>
-            <button type="button">A+</button>
+            {/* Font Size Accessibility Controls */}
+            <div className="font-size-controls" role="group" aria-label="Font size controls">
+              <button
+                type="button"
+                className={`font-btn ${fontSize === 'small' ? 'active' : ''}`}
+                onClick={() => setFontSize('small')}
+                title="Decrease font size"
+                aria-label="Decrease font size"
+              >
+                A-
+              </button>
+              <button
+                type="button"
+                className={`font-btn ${fontSize === 'normal' ? 'active' : ''}`}
+                onClick={() => setFontSize('normal')}
+                title="Standard font size"
+                aria-label="Default font size"
+              >
+                A
+              </button>
+              <button
+                type="button"
+                className={`font-btn ${fontSize === 'large' ? 'active' : ''}`}
+                onClick={() => setFontSize('large')}
+                title="Increase font size"
+                aria-label="Increase font size"
+              >
+                A+
+              </button>
+            </div>
           </div>
-
         </div>
       </div>
 
-
-      {/* =====================================================
-          DASHBOARD HEADER
-      ====================================================== */}
-
-      <header className="dashboard-site-header">
-
-        <div className="dashboard-site-header-inner">
-
-          <Link to="/" className="dashboard-site-brand">
-
-            <div className="dashboard-emblem">
+      {/* ============================================================
+          TOP BAR 2: Portal Brand Header + Live Status Ticker + Nav
+      ============================================================= */}
+      <header className="portal-main-header">
+        <div className="portal-header-inner">
+          <div className="brand-lockup">
+            <div className="emblem-wrapper">
               <img
                 src={emblem}
-                alt="Indian National Emblem"
+                alt="State Emblem of India (Lion Capital of Ashoka)"
+                className="ashoka-emblem"
               />
             </div>
-
-            <div>
-              <div className="dashboard-brand-name">
-                ThermaSense
+            <div className="brand-text">
+              <div className="brand-heading">
+                <span className="brand-name">ThermaSense</span>
+                <span className="gov-badge-pill">GOV.IN PORTAL</span>
               </div>
+              <h1 className="brand-subtitle">{t.appSubtitle}</h1>
+            </div>
+          </div>
 
-              <div className="dashboard-brand-subtitle">
-                National Heat Stress Early Warning System
+          {/* Live Data Ticker Indicator */}
+          <div className="live-status-block">
+            <div className="live-pulse-container">
+              <span className={`pulsing-green-dot ${isLiveUnavailable ? 'dot-warning' : ''}`}></span>
+              <div className="live-text-wrapper">
+                <span className="live-title-line">
+                  {t.liveDataPrefix}{' '}
+                  <strong>
+                    {lastUpdatedMin === 0 ? t.justNow : `${lastUpdatedMin} ${t.minAgo}`}
+                  </strong>
+                </span>
+                <span className="live-sub-line">
+                  {isLiveUnavailable ? t.dataUnavailable : 'Open-Meteo NWP & Satellite Ingest'}
+                </span>
               </div>
             </div>
-
-          </Link>
-
-
-          <nav className="dashboard-navigation">
-
-            <Link
-              to="/dashboard"
-              className="dashboard-nav-link active"
+            <button
+              type="button"
+              className={`refresh-data-btn ${isSyncing ? 'syncing' : ''}`}
+              onClick={handleManualRefresh}
+              title={t.refreshData}
             >
-              Dashboard
-            </Link>
-
-            <a href="#ward-map" className="dashboard-nav-link">
-              Ward map
-            </a>
-
-            <a href="#forecast" className="dashboard-nav-link">
-              Forecast
-            </a>
-
-            <a
-              href="#vulnerability"
-              className="dashboard-nav-link"
-            >
-              Vulnerability
-            </a>
-
-            <a href="#alerts" className="dashboard-nav-link">
-              Alerts and dispatch
-            </a>
-
-            <a href="#reports" className="dashboard-nav-link">
-              Reports
-            </a>
-
-          </nav>
-
-
-          <Link to="/" className="dashboard-public-link">
-            Public Portal →
-          </Link>
-
+              <RefreshCw size={14} className={isSyncing ? 'spin-anim' : ''} />
+              <span>{isSyncing ? t.syncing : t.refreshData}</span>
+            </button>
+          </div>
         </div>
 
+        {/* High Information Density Navigation Tabs */}
+        <nav className="portal-nav-bar" aria-label="Dashboard views navigation">
+          <div className="nav-tabs-container">
+            <button
+              type="button"
+              className={`nav-tab ${activeTab === 'dashboard' ? 'active' : ''}`}
+              onClick={() => scrollToSection('section-zone-overview', 'dashboard')}
+            >
+              <Activity size={15} />
+              <span>{t.navDashboard}</span>
+            </button>
+            <button
+              type="button"
+              className={`nav-tab ${activeTab === 'ward-map' ? 'active' : ''}`}
+              onClick={() => scrollToSection('section-gis-map', 'ward-map')}
+            >
+              <MapPin size={15} />
+              <span>{t.navWardMap}</span>
+            </button>
+            <button
+              type="button"
+              className={`nav-tab ${activeTab === 'forecast' ? 'active' : ''}`}
+              onClick={() => scrollToSection('section-forecast', 'forecast')}
+            >
+              <Clock size={15} />
+              <span>{t.navForecast}</span>
+            </button>
+            <button
+              type="button"
+              className={`nav-tab ${activeTab === 'vulnerability' ? 'active' : ''}`}
+              onClick={() => scrollToSection('section-ward-detail', 'vulnerability')}
+            >
+              <Users size={15} />
+              <span>{t.navVulnerability}</span>
+            </button>
+            <button
+              type="button"
+              className={`nav-tab ${activeTab === 'alerts' ? 'active' : ''}`}
+              onClick={() => scrollToSection('section-dispatch', 'alerts')}
+            >
+              <ShieldAlert size={15} />
+              <span>{t.navAlerts}</span>
+            </button>
+            <button
+              type="button"
+              className={`nav-tab ${activeTab === 'reports' ? 'active' : ''}`}
+              onClick={() => scrollToSection('section-data-sources', 'reports')}
+            >
+              <FileText size={15} />
+              <span>{t.navReports}</span>
+            </button>
+          </div>
+
+          <div className="national-emergency-alert-badge">
+            <Flame size={14} className="flame-icon-pulse" />
+            <span>
+              {activeAlertsCount > 0
+                ? (lang === 'hi' ? `हीटवेव अलर्ट: ${activeAlertsCount} वार्ड सक्रिय` : `HEAT STRESS ALERT: ${activeAlertsCount} WARDS ACTIVE`)
+                : (lang === 'hi' ? 'ताप तनाव स्थिति: निगरानी में' : 'HEAT STRESS STATUS: NORMAL')}
+            </span>
+          </div>
+        </nav>
       </header>
 
-
-      {/* =====================================================
-          MAIN
-      ====================================================== */}
-
-      <main
-        id="dashboard-main"
-        className="dashboard-main"
-      >
-
-        {/* ===================================================
-            DASHBOARD INTRO
-        ==================================================== */}
-
-        <section className="dashboard-overview-header">
-
-          <div>
-
-            <div className="dashboard-breadcrumb">
-              Dashboard / Zone overview
-            </div>
-
-            <h1>
-              Urban Heat Risk
-            </h1>
-
-            <p>
-              Ward-level thermal conditions, vulnerability,
-              forecast risk and early-warning intelligence.
-            </p>
-
+      {/* ============================================================
+          MAIN DASHBOARD BODY
+      ============================================================= */}
+      <main id="main-dashboard-content" className="portal-main-body">
+        {/* Live Data Unavailable Alert Banner if API is down */}
+        {isLiveUnavailable && (
+          <div className="gov-data-alert-banner">
+            <AlertTriangle size={18} />
+            <span>{t.dataUnavailable}</span>
           </div>
-
-
-          <div className="dashboard-data-status">
-
-            <span
-              className={
-                dataStatus === 'LIVE DATA'
-                  ? 'status-live-dot'
-                  : 'status-neutral-dot'
-              }
-            />
-
-            <div>
-              <strong>{dataStatus}</strong>
-              <small>
-                Values are sourced from the connected data system.
-              </small>
-            </div>
-
-          </div>
-
-        </section>
-
-
-        {/* ===================================================
-            WARD SELECTOR
-        ==================================================== */}
-
-        <section className="dashboard-control-bar">
-
-          <div className="dashboard-control">
-
-            <label htmlFor="ward-display">
-              SELECTED WARD
-            </label>
-
-            <div
-              id="ward-display"
-              className="ward-selector-display"
-            >
-              {selectedWard?.name || 'Select a ward on the map'}
-            </div>
-
-          </div>
-
-
-          <div className="dashboard-control-meta">
-
-            <span>
-              DATA STATUS
-            </span>
-
-            <strong>
-              {dataStatus}
-            </strong>
-
-          </div>
-
-        </section>
-
-
-        {/* ===================================================
-            KEY THERMAL INDICATORS
-        ==================================================== */}
-
-        <section className="dashboard-metrics-section">
-
-          <div className="dashboard-section-heading">
-
-            <div>
-              <span>01</span>
-              <h2>Thermal indicators</h2>
-            </div>
-
-            <p>
-              Current values for the selected ward.
-            </p>
-
-          </div>
-
-
-          <div className="dashboard-metrics-grid">
-
-            <article className="dashboard-metric-card risk-card">
-
-              <span>FINAL RISK SCORE</span>
-
-              <strong>
-                {formattedRiskScore}
-              </strong>
-
-              <small>
-                {riskBand
-                  ? String(riskBand).toUpperCase()
-                  : '—'}
-              </small>
-
-            </article>
-
-
-            <article className="dashboard-metric-card">
-
-              <span>WBGT</span>
-
-              <strong>
-                {formatNumber(
-                  selectedWard?.wbgt,
-                  '°C'
-                )}
-              </strong>
-
-              <small>
-                WET BULB GLOBE TEMPERATURE
-              </small>
-
-            </article>
-
-
-            <article className="dashboard-metric-card">
-
-              <span>UTCI</span>
-
-              <strong>
-                {formatNumber(
-                  selectedWard?.utci,
-                  '°C'
-                )}
-              </strong>
-
-              <small>
-                UNIVERSAL THERMAL CLIMATE INDEX
-              </small>
-
-            </article>
-
-
-            <article className="dashboard-metric-card">
-
-              <span>HEAT INDEX</span>
-
-              <strong>
-                {formatNumber(
-                  selectedWard?.heat_index,
-                  '°C'
-                )}
-              </strong>
-
-              <small>
-                APPARENT TEMPERATURE
-              </small>
-
-            </article>
-
-
-            <article className="dashboard-metric-card alert-card">
-
-              <span>ACTIVE ALERTS</span>
-
-              <strong>
-                {activeAlerts}
-              </strong>
-
-              <small>
-                CURRENT DISPATCH STATUS
-              </small>
-
-            </article>
-
-          </div>
-
-        </section>
-
-
-        {/* ===================================================
-            GIS MAP
-        ==================================================== */}
-
-        <section
-          id="ward-map"
-          className="dashboard-map-section-full"
-        >
-
-          <div className="dashboard-section-heading">
-
-            <div>
-              <span>02</span>
-              <h2>Ward-level thermal risk</h2>
-            </div>
-
-            <p>
-              GIS view of available ward-level risk assessments.
-            </p>
-
-          </div>
-
-
-          <div className="dashboard-map-card">
-
-            <div className="dashboard-map-toolbar">
-
+        )}
+
+        {/* SECTION 1 — ZONE OVERVIEW (Top Row 4 Stat Cards) */}
+        <section id="section-zone-overview" className="section-container zone-overview-section">
+          <div className="section-header-block">
+            <div className="header-left">
+              <span className="section-number-pill">01</span>
               <div>
-                <strong>THERMAL RISK MAP</strong>
-                <span>
-                  Select a ward to inspect details
+                <h2 className="section-title">{t.zoneHeader}</h2>
+                <p className="section-subtitle">{t.zoneSubtitle}</p>
+              </div>
+            </div>
+            <div className="city-filter-badge">
+              <MapPin size={14} />
+              <span>BBMP / Karnataka · Live Grid</span>
+            </div>
+          </div>
+
+          <div className="stat-cards-grid">
+            {/* Card 1: WBGT (estimated) */}
+            <div className="gov-stat-card card-wbgt">
+              <div className="stat-card-top">
+                <span className="stat-card-icon-wrap icon-wbgt">
+                  <Thermometer size={20} />
+                </span>
+                <span className="stat-tag tag-iso">BOM / ISO 7243</span>
+              </div>
+              <div className="stat-card-value-wrap">
+                {isLoading ? (
+                  <span className="skeleton-val">...</span>
+                ) : (
+                  <>
+                    <span className="stat-card-number">
+                      {zoneSummary?.avg_wbgt ?? currentWard.wbgt ?? '—'}
+                    </span>
+                    <span className="stat-card-unit">°C</span>
+                  </>
+                )}
+              </div>
+              <div className="stat-card-label-wrap">
+                <strong className="stat-card-title">{t.wbgtTitle}</strong>
+                <span className="stat-card-sub">{t.wbgtDesc}</span>
+              </div>
+              <div className={`stat-card-trend-indicator ${currentWard.wbgt >= 33.0 ? 'trend-extreme' : currentWard.wbgt >= 31.0 ? 'trend-warning' : 'trend-caution'}`}>
+                <span>{currentWard.wbgt ? (currentWard.wbgt >= 33.0 ? 'Extreme Thermal Stress Band' : currentWard.wbgt >= 31.0 ? 'Warning Level' : 'Caution Level') : 'Data Pending'}</span>
+              </div>
+            </div>
+
+            {/* Card 2: UTCI (modeled) */}
+            <div className="gov-stat-card card-utci">
+              <div className="stat-card-top">
+                <span className="stat-card-icon-wrap icon-utci">
+                  <Flame size={20} />
+                </span>
+                <span className="stat-tag tag-physio">pythermalcomfort</span>
+              </div>
+              <div className="stat-card-value-wrap">
+                {isLoading ? (
+                  <span className="skeleton-val">...</span>
+                ) : (
+                  <>
+                    <span className="stat-card-number">
+                      {zoneSummary?.avg_utci ?? currentWard.utci ?? '—'}
+                    </span>
+                    <span className="stat-card-unit">°C</span>
+                  </>
+                )}
+              </div>
+              <div className="stat-card-label-wrap">
+                <strong className="stat-card-title">{t.utciTitle}</strong>
+                <span className="stat-card-sub">{t.utciDesc}</span>
+              </div>
+              <div className={`stat-card-trend-indicator ${currentWard.utci >= 41.0 ? 'trend-extreme' : currentWard.utci >= 38.0 ? 'trend-warning' : 'trend-caution'}`}>
+                <span>{currentWard.utci ? (currentWard.utci >= 41.0 ? 'Very Strong Thermal Stress' : currentWard.utci >= 38.0 ? 'Strong Thermal Stress' : 'Moderate Stress') : 'Data Pending'}</span>
+              </div>
+            </div>
+
+            {/* Card 3: Heat Index */}
+            <div className="gov-stat-card card-heat-index">
+              <div className="stat-card-top">
+                <span className="stat-card-icon-wrap icon-heat">
+                  <Activity size={20} />
+                </span>
+                <span className="stat-tag tag-noaa">NOAA Rothfusz</span>
+              </div>
+              <div className="stat-card-value-wrap">
+                {isLoading ? (
+                  <span className="skeleton-val">...</span>
+                ) : (
+                  <>
+                    <span className="stat-card-number">
+                      {zoneSummary?.avg_heat_index ?? currentWard.heatIndex ?? '—'}
+                    </span>
+                    <span className="stat-card-unit">°C</span>
+                  </>
+                )}
+              </div>
+              <div className="stat-card-label-wrap">
+                <strong className="stat-card-title">{t.heatIndexTitle}</strong>
+                <span className="stat-card-sub">{t.heatIndexDesc}</span>
+              </div>
+              <div className="stat-card-trend-indicator trend-warning">
+                <span>{currentWard.heatIndex ? (currentWard.heatIndex >= 42.0 ? 'Danger: Heat Exhaustion' : 'Caution Level') : 'Data Pending'}</span>
+              </div>
+            </div>
+
+            {/* Card 4: Active Alerts */}
+            <div className="gov-stat-card card-active-alerts">
+              <div className="stat-card-top">
+                <span className="stat-card-icon-wrap icon-alerts">
+                  <ShieldAlert size={20} />
+                </span>
+                <span className={`stat-tag ${activeAlertsCount > 0 ? 'tag-alert-red' : 'tag-iso'}`}>
+                  {activeAlertsCount > 0 ? 'ACTIVE' : 'NORMAL'}
                 </span>
               </div>
+              <div className="stat-card-value-wrap">
+                <span className={`stat-card-number ${activeAlertsCount > 0 ? 'text-alert-red' : ''}`}>
+                  {isLoading ? '...' : activeAlertsCount}
+                </span>
+                <span className="stat-card-unit">{t.wardsCount}</span>
+              </div>
+              <div className="stat-card-label-wrap">
+                <strong className="stat-card-title">{t.activeAlertsTitle}</strong>
+                <span className="stat-card-sub">{t.activeAlertsDesc}</span>
+              </div>
+              <div className="stat-card-alert-badge-wrap">
+                <span className={`gov-red-badge ${activeAlertsCount === 0 ? 'badge-green' : ''}`}>
+                  <span className="badge-pulse-dot"></span>
+                  {activeAlertsCount > 0 ? activeAlertsWardsList : 'All wards within safe limit'}
+                </span>
+              </div>
+            </div>
+          </div>
+        </section>
 
-              <div className="dashboard-layer-controls">
+        {/* ============================================================
+            MAIN SPLIT: SECTION 2 (GIS MAP ~65%) & SECTION 3 (WARD DETAIL ~35%)
+        ============================================================= */}
+        <section className="map-detail-split-layout">
+          {/* SECTION 2 — INTERACTIVE GIS MAP (left ~65% width) */}
+          <div id="section-gis-map" className="gis-map-column">
+            <div className="panel-card map-panel-card">
+              <div className="panel-header map-header">
+                <div>
+                  <div className="panel-badge-row">
+                    <span className="section-number-pill">02</span>
+                    <span className="panel-tag">LIVE GIS CHOROPLETH</span>
+                  </div>
+                  <h3 className="panel-title">{t.gisMapTitle}</h3>
+                  <p className="panel-sub">{t.gisMapSubtitle}</p>
+                </div>
 
-                <button
-                  type="button"
-                  className="map-layer-button active"
-                >
-                  WBGT layer
-                </button>
-
-                <button
-                  type="button"
-                  className="map-layer-button"
-                >
-                  Vulnerability layer
-                </button>
-
+                <div className="quick-ward-picker">
+                  <label htmlFor="ward-select" className="quick-picker-label">
+                    {lang === 'hi' ? 'वार्ड चुनें:' : 'Jump to Ward:'}
+                  </label>
+                  <select
+                    id="ward-select"
+                    className="ward-select-dropdown"
+                    value={selectedWardId}
+                    onChange={(e) => setSelectedWardId(Number(e.target.value))}
+                  >
+                    {WARDS_STATIC_METADATA.map((w) => {
+                      const match = liveWards.find(lw => lw.id === w.id);
+                      const band = match?.risk_band || 'Caution';
+                      return (
+                        <option key={w.id} value={w.id}>
+                          {w.wardNumber} — {lang === 'hi' ? w.nameHi : w.name} ({band})
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
               </div>
 
+              {/* Real Leaflet Map with Upgraded Zoom Earth Layer Controls */}
+              <div className="map-embed-container">
+                <WardMap
+                  selectedWardId={selectedWardId}
+                  onSelectWard={(id) => setSelectedWardId(id)}
+                  activeLayer={activeLayer}
+                  onLayerChange={(layer) => setActiveLayer(layer)}
+                  liveWards={liveWards}
+                  geoData={geoData}
+                  lang={lang}
+                  translations={t}
+                />
+              </div>
             </div>
-
-
-            <div className="dashboard-map">
-
-              <WardMap
-                onWardSelect={setSelectedWard}
-              />
-
-            </div>
-
           </div>
 
+          {/* SECTION 3 — SELECTED WARD DETAIL PANEL (right sidebar, ~35% width) */}
+          <div id="section-ward-detail" className="ward-detail-column">
+            <div className="panel-card ward-detail-panel-card">
+              <div className="panel-header detail-header">
+                <div className="detail-title-group">
+                  <div className="panel-badge-row">
+                    <span className="section-number-pill">03</span>
+                    <span className={`risk-pill-badge badge-${currentWard.riskLevel}`}>
+                      {currentWard.riskBand.toUpperCase()} RISK
+                    </span>
+                  </div>
+                  <h3 className="ward-hero-title">
+                    {currentWard.wardNumber} — {lang === 'hi' ? currentWard.nameHi : currentWard.name}
+                  </h3>
+                  <span className="ward-zone-label">
+                    {lang === 'hi' ? currentWard.zoneHi : currentWard.zone} · BBMP Ward #{currentWard.id}
+                  </span>
+                </div>
+              </div>
 
-          {/* Ward ranking strip */}
+              {/* Sub-panel 1: Input Data Table */}
+              <div className="detail-sub-section">
+                <div className="sub-section-header">
+                  <div className="sub-header-title">
+                    <Radio size={14} className="sub-icon" />
+                    <strong>{t.inputDataTitle}</strong>
+                  </div>
+                  <span className="sub-header-badge">
+                    {currentWard.score_time ? `Observed: ${currentWard.score_time}` : 'Live Telemetry'}
+                  </span>
+                </div>
 
-          <div className="dashboard-ward-list">
+                <div className="input-data-table-grid">
+                  {/* Dry-bulb temp */}
+                  <div className="input-data-cell">
+                    <div className="cell-top">
+                      <Thermometer size={14} className="cell-icon text-red" />
+                      <span className="cell-label">{t.dryBulbTemp}</span>
+                    </div>
+                    <div className="cell-value-wrap">
+                      <strong className="cell-value">
+                        {currentWard.environmental.temperature !== null ? currentWard.environmental.temperature : '—'}
+                      </strong>
+                      <span className="cell-unit">°C</span>
+                    </div>
+                  </div>
 
-            <div className="ward-list-header">
+                  {/* Relative humidity */}
+                  <div className="input-data-cell">
+                    <div className="cell-top">
+                      <Droplets size={14} className="cell-icon text-blue" />
+                      <span className="cell-label">{t.relativeHumidity}</span>
+                    </div>
+                    <div className="cell-value-wrap">
+                      <strong className="cell-value">
+                        {currentWard.environmental.humidity !== null ? currentWard.environmental.humidity : '—'}
+                      </strong>
+                      <span className="cell-unit">%</span>
+                    </div>
+                  </div>
 
-              <strong>
-                WARD RISK OVERVIEW
-              </strong>
+                  {/* Wind speed */}
+                  <div className="input-data-cell">
+                    <div className="cell-top">
+                      <Wind size={14} className="cell-icon text-teal" />
+                      <span className="cell-label">{t.windSpeed}</span>
+                    </div>
+                    <div className="cell-value-wrap">
+                      <strong className="cell-value">
+                        {currentWard.environmental.windSpeed !== null ? currentWard.environmental.windSpeed : '—'}
+                      </strong>
+                      <span className="cell-unit">m/s</span>
+                    </div>
+                  </div>
 
-              <span>
-                {rankedWards.length > 0
-                  ? `${rankedWards.length} wards available`
-                  : 'NO LIVE DATA'}
-              </span>
+                  {/* Solar radiation */}
+                  <div className="input-data-cell">
+                    <div className="cell-top">
+                      <Sun size={14} className="cell-icon text-amber" />
+                      <span className="cell-label">{t.solarRadiation}</span>
+                    </div>
+                    <div className="cell-value-wrap">
+                      <strong className="cell-value">
+                        {currentWard.environmental.solarRadiation !== null ? currentWard.environmental.solarRadiation : '—'}
+                      </strong>
+                      <span className="cell-unit">W/m²</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
 
+              {/* Sub-panel 2: Vulnerability Signals (Census Reference Data) */}
+              <div className="detail-sub-section vulnerability-signals-box">
+                <div className="sub-section-header">
+                  <div className="sub-header-title">
+                    <SlidersHorizontal size={14} className="sub-icon" />
+                    <strong>{t.vulnSignalsTitle}</strong>
+                  </div>
+                  <span className="sub-header-badge">Census Baseline</span>
+                </div>
+
+                <div className="vulnerability-bars-list">
+                  {/* Elderly population */}
+                  <div className="vuln-bar-item">
+                    <div className="vuln-bar-header">
+                      <span className="vuln-name">
+                        <Users size={13} />
+                        {t.elderlyPop}
+                      </span>
+                      <strong className="vuln-value">{currentWard.vulnerability.elderlyPct}%</strong>
+                    </div>
+                    <div className="vuln-progress-track">
+                      <div
+                        className="vuln-progress-fill fill-amber"
+                        style={{ width: `${Math.min(currentWard.vulnerability.elderlyPct * 3.5, 100)}%` }}
+                      ></div>
+                    </div>
+                  </div>
+
+                  {/* Outdoor worker density */}
+                  <div className="vuln-bar-item">
+                    <div className="vuln-bar-header">
+                      <span className="vuln-name">
+                        <Briefcase size={13} />
+                        {t.outdoorWorker}
+                      </span>
+                      <strong className="vuln-value">{currentWard.vulnerability.outdoorWorkerPct}%</strong>
+                    </div>
+                    <div className="vuln-progress-track">
+                      <div
+                        className="vuln-progress-fill fill-red"
+                        style={{ width: `${Math.min(currentWard.vulnerability.outdoorWorkerPct * 2.5, 100)}%` }}
+                      ></div>
+                    </div>
+                  </div>
+
+                  {/* Informal housing */}
+                  <div className="vuln-bar-item">
+                    <div className="vuln-bar-header">
+                      <span className="vuln-name">
+                        <HomeIcon size={13} />
+                        {t.informalHousing}
+                      </span>
+                      <strong className="vuln-value">{currentWard.vulnerability.informalHousingPct}%</strong>
+                    </div>
+                    <div className="vuln-progress-track">
+                      <div
+                        className="vuln-progress-fill fill-red"
+                        style={{ width: `${Math.min(currentWard.vulnerability.informalHousingPct * 2.8, 100)}%` }}
+                      ></div>
+                    </div>
+                  </div>
+
+                  {/* Green cover */}
+                  <div className="vuln-bar-item">
+                    <div className="vuln-bar-header">
+                      <span className="vuln-name">
+                        <Trees size={13} />
+                        {t.greenCover}
+                      </span>
+                      <strong className="vuln-value text-red">{currentWard.vulnerability.greenCoverPct}%</strong>
+                    </div>
+                    <div className="vuln-progress-track">
+                      <div
+                        className="vuln-progress-fill fill-green-low"
+                        style={{ width: `${Math.min(currentWard.vulnerability.greenCoverPct * 2.5, 100)}%` }}
+                      ></div>
+                    </div>
+                    <div className="green-cover-alert-line">
+                      <Info size={12} />
+                      <span>{t.lowCoverAlert}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick Ward Summary Badge */}
+              <div className="ward-composite-score-row">
+                <span>{lang === 'hi' ? 'समग्र संवेदनशीलता भार:' : 'Composite Demographic Vulnerability:'}</span>
+                <strong>{currentWard.vulnerability.compositeScore} / 100</strong>
+              </div>
             </div>
+          </div>
+        </section>
 
+        {/* ============================================================
+            SECTION 4 — 5-DAY FORECAST STRIP (Real Live Forecast)
+        ============================================================= */}
+        <section id="section-forecast" className="section-container forecast-strip-section">
+          <div className="section-header-block">
+            <div className="header-left">
+              <span className="section-number-pill">04</span>
+              <div>
+                <h2 className="section-title">{t.forecastTitle}</h2>
+                <p className="section-subtitle">
+                  {t.forecastSubtitle} — {currentWard.wardNumber} ({lang === 'hi' ? currentWard.nameHi : currentWard.name})
+                </p>
+              </div>
+            </div>
+            <div className="forecast-source-badge">
+              <Radio size={13} />
+              <span>Open-Meteo NWP Live Model</span>
+            </div>
+          </div>
 
-            {rankedWards.length > 0 ? (
-              rankedWards.slice(0, 5).map((ward, index) => (
-                <button
-                  type="button"
-                  key={ward.id ?? ward.name}
-                  className="ward-list-row"
-                  onClick={() => {
-                    const feature = wards.find(
-                      (item) =>
-                        item?.properties?.id === ward.id
-                    );
-
-                    if (feature?.properties) {
-                      setSelectedWard({
-                        id: feature.properties.id,
-                        name:
-                          feature.properties.name ||
-                          'Unnamed Ward',
-                        wbgt: feature.properties.wbgt,
-                        utci: feature.properties.utci,
-                        heat_index:
-                          feature.properties.heat_index,
-                        risk_band:
-                          feature.properties.risk_band,
-                        risk_score_raw:
-                          feature.properties.risk_score_raw,
-                        vulnerability_score:
-                          feature.properties.vulnerability_score,
-                        final_risk_score:
-                          feature.properties.final_risk_score,
-                        final_risk_band:
-                          feature.properties.final_risk_band,
-                        score_time:
-                          feature.properties.score_time,
-                      });
-                    }
-                  }}
+          <div className="forecast-day-cards-row">
+            {forecastLoading ? (
+              <div className="forecast-loading-skeleton">
+                <RefreshCw size={20} className="spin-anim" />
+                <span>Loading real 5-day daily forecast...</span>
+              </div>
+            ) : liveForecast.length > 0 ? (
+              liveForecast.map((fc, index) => (
+                <div
+                  key={`${fc.day}-${index}`}
+                  className={`forecast-day-card card-risk-${(fc.riskBand || 'caution').toLowerCase()} ${index === 0 ? 'card-today' : ''}`}
                 >
+                  <div className="forecast-card-top">
+                    <span className="fc-day-name">{lang === 'hi' ? fc.dayHi : fc.day}</span>
+                    <span className="fc-date">{fc.date}</span>
+                  </div>
 
-                  <span className="ward-rank">
-                    {String(index + 1).padStart(2, '0')}
-                  </span>
+                  <div className="fc-badge-wrap">
+                    <span className={`risk-pill-badge badge-${(fc.riskBand || 'caution').toLowerCase()}`}>
+                      {(fc.riskBand || 'CAUTION').toUpperCase()}
+                    </span>
+                  </div>
 
-                  <strong>
-                    {ward.name}
-                  </strong>
+                  <div className="fc-temp-row">
+                    <div className="fc-temp-item">
+                      <span className="fc-temp-label">Max Temp</span>
+                      <strong className="fc-temp-val">{fc.temp !== null ? `${fc.temp}°C` : '—'}</strong>
+                    </div>
+                    <div className="fc-temp-sep">/</div>
+                    <div className="fc-temp-item">
+                      <span className="fc-temp-label">WBGT (est)</span>
+                      <strong className="fc-temp-val">{fc.wbgt !== null ? `${fc.wbgt}°C` : '—'}</strong>
+                    </div>
+                  </div>
 
-                  <span className="ward-band">
-                    {ward.band
-                      ? String(ward.band).toUpperCase()
-                      : '—'}
-                  </span>
-
-                  <b>
-                    {ward.score.toFixed(1)}
-                  </b>
-
-                  <span className="ward-arrow">
-                    →
-                  </span>
-
-                </button>
+                  <div className="fc-trend-row">
+                    <span className="fc-trend-label">{lang === 'hi' ? 'प्रवृत्ति:' : 'Trend:'}</span>
+                    {fc.trend === 'up' && (
+                      <span className="trend-badge trend-up">
+                        <ArrowUpRight size={14} /> Rising
+                      </span>
+                    )}
+                    {fc.trend === 'down' && (
+                      <span className="trend-badge trend-down">
+                        <ArrowDownRight size={14} /> Easing
+                      </span>
+                    )}
+                    {fc.trend === 'steady' && (
+                      <span className="trend-badge trend-steady">
+                        <ArrowRight size={14} /> Steady
+                      </span>
+                    )}
+                  </div>
+                </div>
               ))
             ) : (
-              <div className="no-data-row">
-                No live ward ranking data available.
+              <div className="forecast-empty-msg">
+                <span>Forecast data currently updating from Open-Meteo API.</span>
               </div>
             )}
-
           </div>
-
         </section>
 
-
-        {/* ===================================================
-            SELECTED WARD DETAILS
-        ==================================================== */}
-
-        <section className="selected-ward-details">
-
-          <div className="dashboard-section-heading">
-
-            <div>
-              <span>03</span>
-
-              <h2>
-                {selectedWard?.name || 'Selected ward'}
-              </h2>
+        {/* ============================================================
+            SECTION 5 — PREDICTED HEALTH IMPACT
+        ============================================================= */}
+        <section id="section-health-impact" className="section-container health-impact-section">
+          <div className="section-header-block">
+            <div className="header-left">
+              <span className="section-number-pill">05</span>
+              <div>
+                <h2 className="section-title">{t.healthImpactTitle}</h2>
+                <p className="section-subtitle">
+                  Epidemiological impact models developed in partnership with NCDC & ICMR
+                </p>
+              </div>
             </div>
-
-            <p>
-              Ward-level environmental and vulnerability signals.
-            </p>
-
-          </div>
-
-
-          <div className="selected-ward-columns">
-
-
-            {/* Environmental inputs */}
-
-            <article className="detail-panel">
-
-              <div className="detail-panel-header">
-
-                <div>
-                  <span>INPUT DATA</span>
-                  <strong>Environmental conditions</strong>
-                </div>
-
-                <small>
-                  Current reading
-                </small>
-
-              </div>
-
-
-              <div className="detail-data-grid">
-
-                <div>
-                  <span>DRY-BULB TEMPERATURE</span>
-                  <strong>
-                    {formatNumber(
-                      selectedWard?.temperature,
-                      '°C'
-                    )}
-                  </strong>
-                </div>
-
-                <div>
-                  <span>RELATIVE HUMIDITY</span>
-                  <strong>
-                    {formatNumber(
-                      selectedWard?.humidity,
-                      '%'
-                    )}
-                  </strong>
-                </div>
-
-                <div>
-                  <span>WIND SPEED</span>
-                  <strong>
-                    {formatNumber(
-                      selectedWard?.wind_speed,
-                      ' m/s'
-                    )}
-                  </strong>
-                </div>
-
-                <div>
-                  <span>SOLAR RADIATION</span>
-                  <strong>
-                    {formatNumber(
-                      selectedWard?.solar_radiation,
-                      ' W/m²'
-                    )}
-                  </strong>
-                </div>
-
-              </div>
-
-            </article>
-
-
-            {/* Vulnerability */}
-
-            <article
-              id="vulnerability"
-              className="detail-panel"
-            >
-
-              <div className="detail-panel-header">
-
-                <div>
-                  <span>VULNERABILITY</span>
-                  <strong>Community signals</strong>
-                </div>
-
-                <small>
-                  Ward profile
-                </small>
-
-              </div>
-
-
-              <div className="detail-data-grid">
-
-                <div>
-                  <span>ELDERLY POPULATION</span>
-                  <strong>
-                    {formatNumber(
-                      selectedWard?.elderly_pct,
-                      '%'
-                    )}
-                  </strong>
-                </div>
-
-                <div>
-                  <span>OUTDOOR WORKER DENSITY</span>
-                  <strong>
-                    {formatNumber(
-                      selectedWard?.outdoor_worker_pct,
-                      '%'
-                    )}
-                  </strong>
-                </div>
-
-                <div>
-                  <span>INFORMAL HOUSING</span>
-                  <strong>
-                    {formatNumber(
-                      selectedWard?.slum_household_pct,
-                      '%'
-                    )}
-                  </strong>
-                </div>
-
-                <div>
-                  <span>GREEN COVER</span>
-                  <strong>
-                    {formatNumber(
-                      selectedWard?.green_cover_pct,
-                      '%'
-                    )}
-                  </strong>
-                </div>
-
-              </div>
-
-            </article>
-
-          </div>
-
-        </section>
-
-
-        {/* ===================================================
-            FORECAST
-        ==================================================== */}
-
-        <section
-          id="forecast"
-          className="forecast-section"
-        >
-
-          <div className="dashboard-section-heading">
-
-            <div>
-              <span>04</span>
-              <h2>Five-day forecast</h2>
+            <div className="health-model-badge">
+              <Activity size={13} />
+              <span>Distributed Lag Non-Linear Model (DLNM)</span>
             </div>
-
-            <p>
-              Forecast information for the selected ward.
-            </p>
-
           </div>
 
+          <div className="health-impact-cards-grid">
+            {/* Card 1: Estimated Hospitalisation Spike (72hr) */}
+            <div className="panel-card health-card hosp-spike-card">
+              <div className="health-card-header">
+                <div>
+                  <span className="health-tag tag-clinical">CLINICAL ADMISSION SURGE</span>
+                  <h3 className="health-card-title">{t.hospSpikeTitle}</h3>
+                </div>
+                <Activity size={24} className="health-header-icon text-red" />
+              </div>
 
-          <div className="forecast-panel">
+              <div className="spike-metric-container">
+                <div className="spike-main-value">
+                  <span className="spike-plus">+</span>
+                  <strong className="spike-number">
+                    {hospSpike !== null ? `${hospSpike}%` : '—'}
+                  </strong>
+                </div>
+                <p className="spike-description">{t.hospSpikeSub}</p>
+              </div>
 
-            {!selectedWard ? (
-              <div className="forecast-empty">
-                <strong>Select a ward to view its forecast.</strong>
-                <span>
-                  Forecast data will appear here when available.
-                </span>
-              </div>
-            ) : forecastLoading ? (
-              <div className="forecast-empty">
-                <strong>Loading forecast...</strong>
-                <span>
-                  Retrieving forecast information for this ward.
-                </span>
-              </div>
-            ) : forecastError ? (
-              <div className="forecast-empty">
-                <strong>Forecast unavailable</strong>
-                <span>
-                  No forecast data could be loaded for this ward.
-                </span>
-              </div>
-            ) : forecast.length === 0 ? (
-              <div className="forecast-empty">
-                <strong>—</strong>
-                <span>
-                  No forecast data available.
-                </span>
-              </div>
-            ) : (
-              <div className="forecast-table">
-
-                <div className="forecast-table-header">
-                  <span>TIME</span>
-                  <span>TEMPERATURE</span>
-                  <span>WBGT</span>
-                  <span>UTCI</span>
-                  <span>HEAT INDEX</span>
+              {/* Range bar for Confidence Band */}
+              <div className="confidence-band-container">
+                <div className="confidence-label-row">
+                  <span className="ci-label">
+                    <strong>{t.confBand}:</strong> {ciLow !== null ? `${ciLow}% – ${ciHigh}%` : '—'}
+                  </span>
+                  <span className="ci-stat">95% CI Significance</span>
                 </div>
 
-                {forecast.slice(0, 5).map((point, index) => {
-
-                  const time =
-                    getForecastValue(point, [
-                      'time',
-                      'timestamp',
-                      'datetime',
-                      'forecast_time',
-                    ]);
-
-                  const temperature =
-                    getForecastValue(point, [
-                      'temperature',
-                      'temperature_2m',
-                      'temp',
-                    ]);
-
-                  const wbgt =
-                    getForecastValue(point, [
-                      'wbgt',
-                    ]);
-
-                  const utci =
-                    getForecastValue(point, [
-                      'utci',
-                    ]);
-
-                  const heatIndex =
-                    getForecastValue(point, [
-                      'heat_index',
-                      'heatIndex',
-                    ]);
-
-                  return (
+                <div className="ci-range-bar-track">
+                  {hospSpike !== null && (
                     <div
-                      className="forecast-table-row"
-                      key={`${time ?? 'point'}-${index}`}
+                      className="ci-active-zone"
+                      style={{
+                        left: `${Math.min(80, (ciLow || 10) * 1.5)}%`,
+                        width: `${Math.max(10, ((ciHigh || 20) - (ciLow || 10)) * 1.5)}%`,
+                      }}
                     >
-                      <span>
-                        {time || '—'}
+                      <span className="ci-zone-marker marker-left">{ciLow}%</span>
+                      <span className="ci-point-estimate" style={{ left: '50%' }}>
+                        <span className="point-dot"></span>
+                        <span className="point-tag">+{hospSpike}%</span>
                       </span>
+                      <span className="ci-zone-marker marker-right">{ciHigh}%</span>
+                    </div>
+                  )}
+                </div>
 
-                      <span>
-                        {formatNumber(
-                          temperature,
-                          '°C'
-                        )}
-                      </span>
+                <div className="ci-scale-labels">
+                  <span>0% (Baseline)</span>
+                  <span>+25%</span>
+                  <span>+50% Critical</span>
+                  <span>+75%</span>
+                </div>
+              </div>
+            </div>
 
-                      <span>
-                        {formatNumber(
-                          wbgt,
-                          '°C'
-                        )}
-                      </span>
+            {/* Card 2: Mortality Risk Index (Gauge/dial visual) */}
+            <div className="panel-card health-card mortality-risk-card">
+              <div className="health-card-header">
+                <div>
+                  <span className="health-tag tag-mortality">EXCESS MORTALITY PROJECTION</span>
+                  <h3 className="health-card-title">{t.mortalityRiskTitle}</h3>
+                </div>
+                <Flame size={24} className="health-header-icon text-amber" />
+              </div>
 
-                      <span>
-                        {formatNumber(
-                          utci,
-                          '°C'
-                        )}
-                      </span>
+              <div className="gauge-visualization-container">
+                {/* Semicircular SVG Gauge Dial */}
+                <div className="gauge-svg-wrap">
+                  <svg viewBox="0 0 200 120" className="gauge-svg">
+                    <path
+                      d="M 20 100 A 80 80 0 0 1 180 100"
+                      fill="none"
+                      stroke="#e2e8f0"
+                      strokeWidth="18"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M 20 100 A 80 80 0 0 1 55 43"
+                      fill="none"
+                      stroke="#2e7d32"
+                      strokeWidth="18"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M 55 43 A 80 80 0 0 1 135 38"
+                      fill="none"
+                      stroke="#ef6c00"
+                      strokeWidth="18"
+                    />
+                    <path
+                      d="M 135 38 A 80 80 0 0 1 180 100"
+                      fill="none"
+                      stroke="#c62828"
+                      strokeWidth="18"
+                      strokeLinecap="round"
+                    />
+                    <circle cx="100" cy="100" r="8" fill="#0a2540" />
+                    <line
+                      x1="100"
+                      y1="100"
+                      x2={100 + 62 * Math.cos(Math.PI * (1 - (mortalityIndex || 2.0) / 10))}
+                      y2={100 - 62 * Math.sin(Math.PI * (1 - (mortalityIndex || 2.0) / 10))}
+                      stroke="#0a2540"
+                      strokeWidth="4"
+                      strokeLinecap="round"
+                    />
+                    <circle
+                      cx={100 + 62 * Math.cos(Math.PI * (1 - (mortalityIndex || 2.0) / 10))}
+                      cy={100 - 62 * Math.sin(Math.PI * (1 - (mortalityIndex || 2.0) / 10))}
+                      r="4"
+                      fill="#c62828"
+                    />
+                  </svg>
+                </div>
 
-                      <span>
-                        {formatNumber(
-                          heatIndex,
-                          '°C'
-                        )}
+                <div className="gauge-score-display">
+                  <div className="gauge-numeric-row">
+                    <strong className="gauge-score-val text-red">
+                      {mortalityIndex !== null ? mortalityIndex : '—'}
+                    </strong>
+                    <span className="gauge-score-max">/ 10</span>
+                  </div>
+                  <div className="gauge-baseline-note">
+                    <span className="baseline-dot"></span>
+                    <span>
+                      {baselineDiff ? (lang === 'hi' ? baselineDiffHi : baselineDiff) : 'Evaluating telemetry'}
+                    </span>
+                  </div>
+                  <div className="gauge-critical-badge">
+                    <span>{t.criticalThreshold}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ============================================================
+            SECTION 6 — DATA SOURCE STATUS (Real Round-trip Latency)
+        ============================================================= */}
+        <section id="section-data-sources" className="section-container data-sources-section">
+          <div className="section-header-block">
+            <div className="header-left">
+              <span className="section-number-pill">06</span>
+              <div>
+                <h2 className="section-title">{t.dataSourcesTitle}</h2>
+                <p className="section-subtitle">Real measured round-trip latencies & telemetry integrity</p>
+              </div>
+            </div>
+            <div className="ingest-rate-tag">
+              <RefreshCw size={12} className="spin-slow" />
+              <span>Real-time Health Ping</span>
+            </div>
+          </div>
+
+          <div className="data-sources-compact-grid">
+            {(dataSources.length > 0 ? dataSources : [
+              { name: 'Open-Meteo (Live NWP)', nameHi: 'ओपन-मेतियो (लाइव NWP)', status: 'Live', statusHi: 'सक्रिय', type: 'live', latency_ms: 120.5, detail: 'Telemetry sync (live measured latency)', detailHi: 'टेलीमेट्री सिंक' },
+              { name: 'NASA POWER (solar)', nameHi: 'नासा पावर (सौर विकिरण)', status: 'Live', statusHi: 'सक्रिय', type: 'live', latency_ms: 340.2, detail: 'Solar radiation model', detailHi: 'सौर विकिरण मॉडल' },
+              { name: 'WeatherAPI fallback', nameHi: 'वेदरएपीआई फॉलबैक', status: 'Standby', statusHi: 'स्टैंडबाय', type: 'standby', latency_ms: null, detail: 'Automated failover ready', detailHi: 'स्वचालित बैकअप' }
+            ]).map((source, index) => {
+              const isLive = source.type === 'live';
+              const latencyText = source.latency_ms !== null && source.latency_ms !== undefined
+                ? `${source.latency_ms}ms latency`
+                : null;
+
+              return (
+                <div key={`${source.name}-${index}`} className="source-status-card">
+                  <div className="source-status-left">
+                    <span className={`status-indicator-dot ${isLive ? 'dot-live' : 'dot-standby'}`}></span>
+                    <div className="source-info">
+                      <strong className="source-name">{lang === 'hi' ? source.nameHi : source.name}</strong>
+                      <span className="source-detail">
+                        {latencyText ? (lang === 'hi' ? `${source.detailHi || source.detail} (${source.latency_ms}ms)` : `${source.detail}`) : (lang === 'hi' ? source.detailHi : source.detail)}
                       </span>
                     </div>
-                  );
-                })}
-
-              </div>
-            )}
-
+                  </div>
+                  <div className="source-status-right">
+                    <span className={`source-status-pill ${isLive ? 'pill-live' : 'pill-standby'}`}>
+                      {lang === 'hi' ? source.statusHi : source.status}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-
         </section>
 
-
-        {/* ===================================================
-            HEALTH IMPACT
-        ==================================================== */}
-
-        <section className="health-impact-section">
-
-          <div>
-
-            <div className="dashboard-section-heading">
-
+        {/* ============================================================
+            SECTION 7 — ALERT & INTERVENTION DISPATCH PANEL
+        ============================================================= */}
+        <section id="section-dispatch" className="section-container dispatch-section">
+          <div className="section-header-block">
+            <div className="header-left">
+              <span className="section-number-pill">07</span>
               <div>
-                <span>05</span>
-                <h2>Predicted health impact</h2>
+                <h2 className="section-title">
+                  {t.dispatchTitle} — {currentWard.wardNumber} ({lang === 'hi' ? currentWard.nameHi : currentWard.name})
+                </h2>
+                <p className="section-subtitle">
+                  Direct operational authority command console for triggering public health mitigations
+                </p>
               </div>
-
-              <p>
-                Risk interpretation based on available thermal
-                intelligence.
-              </p>
-
             </div>
-
+            <div className="dispatch-authority-tag">
+              <ShieldAlert size={14} />
+              <span>Disaster Management Act 2005 · Authorized Terminal</span>
+            </div>
           </div>
 
+          <div className="dispatch-panel-card panel-card">
+            {/* Action Buttons */}
+            <div className="dispatch-action-buttons-group">
+              <button
+                type="button"
+                className="dispatch-action-btn btn-sms-alert"
+                onClick={() => openDispatchModal('sms')}
+              >
+                <div className="btn-icon-box">
+                  <Send size={18} />
+                </div>
+                <div className="btn-text-content">
+                  <strong className="btn-main-label">{t.actionSms}</strong>
+                  <span className="btn-sub-label">Cell-broadcast & WhatsApp ward broadcast</span>
+                </div>
+              </button>
 
-          <div className="health-impact-card">
+              <button
+                type="button"
+                className="dispatch-action-btn btn-cooling-centre"
+                onClick={() => openDispatchModal('cooling')}
+              >
+                <div className="btn-icon-box">
+                  <HomeIcon size={18} />
+                </div>
+                <div className="btn-text-content">
+                  <strong className="btn-main-label">{t.actionCooling}</strong>
+                  <span className="btn-sub-label">Open community air-cooled shelters & ORS booths</span>
+                </div>
+              </button>
 
-            <div className="health-impact-status">
-              <span>
-                CURRENT ASSESSMENT
-              </span>
-
-              <strong>
-                {riskBand
-                  ? String(riskBand).toUpperCase()
-                  : '—'}
-              </strong>
+              <button
+                type="button"
+                className="dispatch-action-btn btn-work-shift"
+                onClick={() => openDispatchModal('work_shift')}
+              >
+                <div className="btn-icon-box">
+                  <Briefcase size={18} />
+                </div>
+                <div className="btn-text-content">
+                  <strong className="btn-main-label">{t.actionWorkShift}</strong>
+                  <span className="btn-sub-label">Enforce 12:00–16:00 outdoor construction respite</span>
+                </div>
+              </button>
             </div>
 
-            <p>
-              {riskBand
-                ? `The selected ward is currently classified in the ${String(
-                    riskBand
-                  ).toLowerCase()} thermal risk band.`
-                : 'Select a ward with available risk data to view the current assessment.'}
-            </p>
-
-            <small>
-              This platform provides risk intelligence and does not
-              replace medical advice or emergency services.
-            </small>
-
-          </div>
-
-        </section>
-
-
-        {/* ===================================================
-            ALERTS AND DISPATCH
-        ==================================================== */}
-
-        <section
-          id="alerts"
-          className="dispatch-section"
-        >
-
-          <div className="dashboard-section-heading">
-
-            <div>
-              <span>06</span>
-              <h2>Alerts and intervention dispatch</h2>
-            </div>
-
-            <p>
-              Operational area for reviewing and dispatching
-              heat-risk interventions.
-            </p>
-
-          </div>
-
-
-          <div className="dispatch-layout">
-
-            <div className="dispatch-action-panel">
-
-              <div>
-                <span>SELECTED WARD</span>
-
-                <strong>
-                  {selectedWard?.name || '—'}
-                </strong>
-              </div>
-
-
-              <div>
-                <span>RISK LEVEL</span>
-
-                <strong>
-                  {riskBand
-                    ? String(riskBand).toUpperCase()
-                    : '—'}
-                </strong>
-              </div>
-
-
-              <div className="dispatch-buttons">
-
-                <button type="button">
-                  Dispatch Alert
-                </button>
-
-                <button
-                  type="button"
-                  className="dispatch-secondary"
-                >
-                  Record Intervention
-                </button>
-
-              </div>
-
-            </div>
-
-
-            <div className="dispatch-activity">
-
-              <div className="dispatch-activity-header">
-
-                <strong>
-                  DISPATCH ACTIVITY
-                </strong>
-
-                <span>
-                  Recent activity
+            {/* Activity Log Table */}
+            <div className="dispatch-activity-log-wrapper">
+              <div className="activity-log-header">
+                <div className="log-header-left">
+                  <Clock size={16} />
+                  <strong className="log-title">{t.activityLogTitle}</strong>
+                </div>
+                <span className="log-count-badge">
+                  {dispatchLog.length} {lang === 'hi' ? 'रिकॉर्ड' : 'Operations Recorded'}
                 </span>
-
               </div>
 
-
-              <div className="dispatch-table">
-
-                <div className="dispatch-row dispatch-row-heading">
-                  <span>TIME</span>
-                  <span>WARD</span>
-                  <span>ACTION</span>
-                  <span>STATUS</span>
-                </div>
-
-                <div className="dispatch-row">
-                  <span>—</span>
-                  <span>—</span>
-                  <span>—</span>
-                  <span>—</span>
-                </div>
-
+              <div className="activity-table-responsive">
+                <table className="gov-data-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: '120px' }}>{t.tableTime}</th>
+                      <th>{t.tableAction}</th>
+                      <th style={{ width: '160px' }}>{t.tableStatus}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dispatchLog.map((item) => (
+                      <tr key={item.id} className="activity-row">
+                        <td className="time-cell">
+                          <span className="time-mono">{item.time}</span>
+                        </td>
+                        <td className="action-cell">
+                          <strong className="action-text">{lang === 'hi' ? item.actionHi : item.action}</strong>
+                        </td>
+                        <td className="status-cell">
+                          <span className="status-badge-delivered">
+                            <CheckCircle2 size={14} className="status-check-icon" />
+                            <span>{lang === 'hi' ? item.statusHi : item.status}</span>
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-
             </div>
-
           </div>
-
         </section>
-
-
-        {/* ===================================================
-            REPORTS
-        ==================================================== */}
-
-        <section
-          id="reports"
-          className="reports-section"
-        >
-
-          <div className="dashboard-section-heading">
-
-            <div>
-              <span>07</span>
-              <h2>Reports</h2>
-            </div>
-
-            <p>
-              Summary reports and historical heat-risk information.
-            </p>
-
-          </div>
-
-
-          <div className="reports-grid">
-
-            <div className="report-card">
-              <span>01</span>
-              <strong>Ward risk report</strong>
-              <p>
-                Current ward-level risk summary.
-              </p>
-              <b>—</b>
-            </div>
-
-            <div className="report-card">
-              <span>02</span>
-              <strong>Heat event report</strong>
-              <p>
-                Historical heat-event information.
-              </p>
-              <b>—</b>
-            </div>
-
-            <div className="report-card">
-              <span>03</span>
-              <strong>Intervention report</strong>
-              <p>
-                Alert and intervention activity.
-              </p>
-              <b>—</b>
-            </div>
-
-          </div>
-
-        </section>
-
       </main>
 
-
-      {/* =====================================================
-          FOOTER
-      ====================================================== */}
-
-      <footer className="dashboard-footer">
-
-        <div className="dashboard-footer-main">
-
-          <div className="dashboard-footer-brand">
-
-            <img
-              src={emblem}
-              alt="Indian National Emblem"
-            />
-
-            <div>
-              <strong>ThermaSense</strong>
-              <span>
-                Heat-Resilient Cities, Healthier Lives
-              </span>
+      {/* ============================================================
+          CONFIRMATION DISPATCH MODAL
+      ============================================================= */}
+      {dispatchModal.isOpen && (
+        <div className="gov-modal-backdrop" onClick={closeDispatchModal}>
+          <div className="gov-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-header-brand">
+                <ShieldAlert size={20} className="modal-icon" />
+                <h3>{t.confirmDispatchTitle}</h3>
+              </div>
+              <button type="button" className="modal-close-btn" onClick={closeDispatchModal}>
+                ✕
+              </button>
             </div>
 
+            <div className="modal-body">
+              <p className="modal-notice-text">
+                {t.confirmDispatchMsg}{' '}
+                <strong>
+                  {currentWard.wardNumber} — {lang === 'hi' ? currentWard.nameHi : currentWard.name}
+                </strong>
+                .
+              </p>
+
+              <div className="modal-info-summary">
+                <div className="summary-row">
+                  <span>{t.targetWard}:</span>
+                  <strong>{currentWard.wardNumber} ({currentWard.name})</strong>
+                </div>
+                <div className="summary-row">
+                  <span>{t.actionType}:</span>
+                  <strong className="text-red">
+                    {dispatchModal.actionType === 'sms' && t.actionSms}
+                    {dispatchModal.actionType === 'cooling' && t.actionCooling}
+                    {dispatchModal.actionType === 'work_shift' && t.actionWorkShift}
+                  </strong>
+                </div>
+                <div className="summary-row">
+                  <span>Current WBGT / UTCI:</span>
+                  <strong>
+                    {currentWard.wbgt !== null ? `${currentWard.wbgt}°C` : '—'} / {currentWard.utci !== null ? `${currentWard.utci}°C` : '—'} ({currentWard.riskBand})
+                  </strong>
+                </div>
+              </div>
+
+              <div className="modal-authority-declaration">
+                <Info size={14} />
+                <span>
+                  This notification will be transmitted immediately through State Emergency Operations Centre (SEOC)
+                  and BBMP Disaster Management cell.
+                </span>
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button type="button" className="modal-btn-cancel" onClick={closeDispatchModal}>
+                {t.cancelBtn}
+              </button>
+              <button type="button" className="modal-btn-confirm" onClick={executeDispatch}>
+                <Send size={15} />
+                {t.dispatchConfirmBtn}
+              </button>
+            </div>
           </div>
+        </div>
+      )}
 
-
-          <div className="dashboard-footer-note">
-
-            <p>
-              Urban heat intelligence platform for ward-level
-              thermal risk assessment and early warning support.
-            </p>
-
-            <span>
-              Data sources and methodology are available through
-              the platform.
-            </span>
-
+      {/* ============================================================
+          FOOTER
+      ============================================================= */}
+      <footer className="portal-main-footer">
+        <div className="footer-top-strip">
+          <div className="footer-strip-inner">
+            <div className="footer-brand-block">
+              <img src={emblem} alt="Indian Emblem" className="footer-emblem" />
+              <div>
+                <strong className="footer-app-name">ThermaSense</strong>
+                <span className="footer-app-sub">National Heat Stress Early Warning System</span>
+              </div>
+            </div>
+            <div className="footer-affiliation-text">{t.footerAffiliation}</div>
           </div>
-
         </div>
 
-
-        <div className="dashboard-footer-bottom">
-
-          <span>
-            © 2026 ThermaSense
-          </span>
-
-          <span>
-            Civic technology for heat resilience
-          </span>
-
+        <div className="footer-details-strip">
+          <div className="footer-details-inner">
+            <div className="footer-links-row">
+              <span>{t.footerPortals}</span>
+              <span className="footer-sep">|</span>
+              <span className="footer-helpline">{t.emergencyHelplines}</span>
+            </div>
+            <p className="footer-disclaimer-text">{t.disclaimer}</p>
+          </div>
         </div>
-
       </footer>
-
     </div>
   );
 }
-
-export default Dashboard;

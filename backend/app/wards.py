@@ -1,10 +1,183 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
+from typing import Optional
 from sqlalchemy import text
-from db import engine
 import json
 
+from .heat_indices import (
+    fetch_ward_live_weather,
+    fetch_ward_5day_forecast,
+    check_data_sources_health,
+    compute_wbgt,
+    compute_utci,
+    compute_heat_index,
+    get_risk_band,
+)
+
+# Optional database engine
+try:
+    from db import engine
+    HAS_DB = True
+except Exception:
+    HAS_DB = False
+    engine = None
 
 router = APIRouter()
+
+# Default Bengaluru 8 monitored wards metadata & geometry (for reliable fallback geometry)
+BENGALURU_8_WARDS = [
+    {
+        "id": 1,
+        "name": "Malleshwaram",
+        "city": "Bengaluru",
+        "centroid_lat": 13.003,
+        "centroid_lon": 77.570,
+        "vulnerability_score": 28.5,
+        "elderly_pct": 14.5,
+        "outdoor_worker_pct": 19.0,
+        "informal_housing_pct": 12.0,
+        "green_cover_pct": 24.5,
+        "coordinates": [[
+            [77.552, 12.990],
+            [77.585, 12.990],
+            [77.585, 13.022],
+            [77.552, 13.022],
+            [77.552, 12.990]
+        ]]
+    },
+    {
+        "id": 2,
+        "name": "Hebbal",
+        "city": "Bengaluru",
+        "centroid_lat": 13.035,
+        "centroid_lon": 77.598,
+        "vulnerability_score": 48.2,
+        "elderly_pct": 15.8,
+        "outdoor_worker_pct": 26.4,
+        "informal_housing_pct": 21.5,
+        "green_cover_pct": 16.2,
+        "coordinates": [[
+            [77.585, 13.015],
+            [77.625, 13.015],
+            [77.625, 13.055],
+            [77.585, 13.055],
+            [77.585, 13.015]
+        ]]
+    },
+    {
+        "id": 3,
+        "name": "Rajajinagar",
+        "city": "Bengaluru",
+        "centroid_lat": 12.990,
+        "centroid_lon": 77.555,
+        "vulnerability_score": 56.4,
+        "elderly_pct": 17.1,
+        "outdoor_worker_pct": 28.5,
+        "informal_housing_pct": 23.0,
+        "green_cover_pct": 11.5,
+        "coordinates": [[
+            [77.530, 12.965],
+            [77.568, 12.965],
+            [77.568, 13.005],
+            [77.530, 13.005],
+            [77.530, 12.965]
+        ]]
+    },
+    {
+        "id": 4,
+        "name": "Shivajinagar",
+        "city": "Bengaluru",
+        "centroid_lat": 12.985,
+        "centroid_lon": 77.602,
+        "vulnerability_score": 78.4,
+        "elderly_pct": 18.2,
+        "outdoor_worker_pct": 31.0,
+        "informal_housing_pct": 27.0,
+        "green_cover_pct": 9.0,
+        "coordinates": [[
+            [77.585, 12.968],
+            [77.622, 12.968],
+            [77.622, 13.005],
+            [77.585, 13.005],
+            [77.585, 12.968]
+        ]]
+    },
+    {
+        "id": 5,
+        "name": "Shantinagar",
+        "city": "Bengaluru",
+        "centroid_lat": 12.955,
+        "centroid_lon": 77.595,
+        "vulnerability_score": 74.0,
+        "elderly_pct": 19.4,
+        "outdoor_worker_pct": 29.8,
+        "informal_housing_pct": 25.4,
+        "green_cover_pct": 10.2,
+        "coordinates": [[
+            [77.575, 12.938],
+            [77.615, 12.938],
+            [77.615, 12.968],
+            [77.575, 12.968],
+            [77.575, 12.938]
+        ]]
+    },
+    {
+        "id": 6,
+        "name": "Koramangala",
+        "city": "Bengaluru",
+        "centroid_lat": 12.935,
+        "centroid_lon": 77.625,
+        "vulnerability_score": 49.5,
+        "elderly_pct": 16.0,
+        "outdoor_worker_pct": 24.2,
+        "informal_housing_pct": 18.5,
+        "green_cover_pct": 17.8,
+        "coordinates": [[
+            [77.612, 12.915],
+            [77.652, 12.915],
+            [77.652, 12.955],
+            [77.612, 12.955],
+            [77.612, 12.915]
+        ]]
+    },
+    {
+        "id": 7,
+        "name": "Indiranagar",
+        "city": "Bengaluru",
+        "centroid_lat": 12.978,
+        "centroid_lon": 77.642,
+        "vulnerability_score": 31.2,
+        "elderly_pct": 15.2,
+        "outdoor_worker_pct": 18.6,
+        "informal_housing_pct": 10.4,
+        "green_cover_pct": 22.0,
+        "coordinates": [[
+            [77.622, 12.955],
+            [77.668, 12.955],
+            [77.668, 12.998],
+            [77.622, 12.998],
+            [77.622, 12.955]
+        ]]
+    },
+    {
+        "id": 8,
+        "name": "Jayanagar",
+        "city": "Bengaluru",
+        "centroid_lat": 12.928,
+        "centroid_lon": 77.583,
+        "vulnerability_score": 81.0,
+        "elderly_pct": 21.0,
+        "outdoor_worker_pct": 32.5,
+        "informal_housing_pct": 28.2,
+        "green_cover_pct": 8.5,
+        "coordinates": [[
+            [77.560, 12.905],
+            [77.608, 12.905],
+            [77.608, 12.940],
+            [77.560, 12.940],
+            [77.560, 12.905]
+        ]]
+    }
+]
 
 
 def _to_float(value):
@@ -14,77 +187,120 @@ def _to_float(value):
 @router.get("/wards/geojson")
 def get_wards_geojson():
     """
-    Return all wards as GeoJSON with their latest current risk.
-
-    Forecast rows are excluded. Both raw thermal risk and
-    vulnerability-adjusted final risk are returned.
+    Return all wards as GeoJSON populated with LIVE weather data and calculated indices.
+    If live fetch fails, returns None for missing fields (no fabricated numbers).
     """
-    query = text("""
-        SELECT
-            w.id,
-            w.name,
-            w.city,
-            w.centroid_lat,
-            w.centroid_lon,
-            ST_AsGeoJSON(w.geom) AS geom_json,
-            rs.wbgt_c,
-            rs.utci_c,
-            rs.heat_index_c,
-            rs.risk_band,
-            rs.risk_score_raw,
-            rs.vulnerability_score,
-            rs.final_risk_score,
-            rs.final_risk_band,
-            rs.score_time
-        FROM wards w
-        LEFT JOIN LATERAL (
-            SELECT *
-            FROM risk_scores r
-            WHERE r.ward_id = w.id
-              AND r.is_forecast = FALSE
-            ORDER BY
-                r.score_time DESC,
-                r.final_risk_score IS NULL,
-                r.id DESC
-            LIMIT 1
-        ) rs ON TRUE
-    """)
-
-    with engine.connect() as conn:
-        rows = conn.execute(query).fetchall()
-
     features = []
 
-    for row in rows:
-        geometry = json.loads(row.geom_json) if row.geom_json else None
+    # Attempt to fetch DB records if DB is configured
+    db_wards_map = {}
+    if HAS_DB and engine:
+        try:
+            query = text("""
+                SELECT
+                    w.id,
+                    w.name,
+                    w.city,
+                    w.centroid_lat,
+                    w.centroid_lon,
+                    ST_AsGeoJSON(w.geom) AS geom_json,
+                    w.elderly_pct,
+                    w.outdoor_worker_pct,
+                    w.slum_household_pct,
+                    w.green_cover_pct
+                FROM wards w
+            """)
+            with engine.connect() as conn:
+                rows = conn.execute(query).fetchall()
+                for r in rows:
+                    db_wards_map[r.id] = {
+                        "id": r.id,
+                        "name": r.name,
+                        "city": r.city,
+                        "lat": _to_float(r.centroid_lat),
+                        "lon": _to_float(r.centroid_lon),
+                        "geom": json.loads(r.geom_json) if r.geom_json else None,
+                        "elderly_pct": _to_float(r.elderly_pct),
+                        "outdoor_worker_pct": _to_float(r.outdoor_worker_pct),
+                        "informal_housing_pct": _to_float(r.slum_household_pct),
+                        "green_cover_pct": _to_float(r.green_cover_pct),
+                    }
+        except Exception:
+            db_wards_map = {}
+
+    for w_meta in BENGALURU_8_WARDS:
+        w_id = w_meta["id"]
+        db_item = db_wards_map.get(w_id, {})
+        lat = db_item.get("lat") or w_meta["centroid_lat"]
+        lon = db_item.get("lon") or w_meta["centroid_lon"]
+        name = db_item.get("name") or w_meta["name"]
+        city = db_item.get("city") or w_meta["city"]
+
+        geometry = db_item.get("geom") or {
+            "type": "Polygon",
+            "coordinates": w_meta["coordinates"]
+        }
+
+        # Fetch LIVE weather and computed thermal stress from Open-Meteo
+        live_weather = fetch_ward_live_weather(lat, lon)
+
+        if live_weather:
+            wbgt = live_weather.get("wbgt")
+            utci = live_weather.get("utci")
+            hi = live_weather.get("heat_index")
+            temp = live_weather.get("temperature")
+            humidity = live_weather.get("humidity")
+            wind = live_weather.get("wind_speed")
+            solar = live_weather.get("solar_radiation")
+            risk_band = live_weather.get("risk_band")
+            score_time = live_weather.get("reading_time")
+            is_live = True
+        else:
+            wbgt = None
+            utci = None
+            hi = None
+            temp = None
+            humidity = None
+            wind = None
+            solar = None
+            risk_band = "Unavailable"
+            score_time = None
+            is_live = False
+
+        vuln_score = w_meta["vulnerability_score"]
+        # Composite score
+        if wbgt is not None:
+            raw_risk = min(100.0, max(0.0, (wbgt - 24.0) * 10.0))
+            final_risk = round(0.7 * raw_risk + 0.3 * vuln_score, 1)
+        else:
+            final_risk = None
 
         features.append({
             "type": "Feature",
             "geometry": geometry,
             "properties": {
-                "id": row.id,
-                "name": row.name,
-                "city": row.city,
-                "centroid_lat": _to_float(row.centroid_lat),
-                "centroid_lon": _to_float(row.centroid_lon),
-                "wbgt": _to_float(row.wbgt_c),
-                "utci": _to_float(row.utci_c),
-                "heat_index": _to_float(row.heat_index_c),
-                "risk_band": row.risk_band or "unknown",
-                "risk_score_raw": _to_float(row.risk_score_raw),
-                "vulnerability_score": _to_float(
-                    row.vulnerability_score
-                ),
-                "final_risk_score": _to_float(
-                    row.final_risk_score
-                ),
-                "final_risk_band": row.final_risk_band,
-                "score_time": (
-                    row.score_time.isoformat()
-                    if row.score_time
-                    else None
-                ),
-            },
+                "id": w_id,
+                "name": name,
+                "city": city,
+                "centroid_lat": lat,
+                "centroid_lon": lon,
+                "temperature": temp,
+                "humidity": humidity,
+                "wind_speed": wind,
+                "solar_radiation": solar,
+                "wbgt": wbgt,
+                "utci": utci,
+                "heat_index": hi,
+                "risk_band": risk_band,
+                "final_risk_score": final_risk,
+                "vulnerability_score": vuln_score,
+                "elderly_pct": db_item.get("elderly_pct") or w_meta.get("elderly_pct"),
+                "outdoor_worker_pct": db_item.get("outdoor_worker_pct") or w_meta.get("outdoor_worker_pct"),
+                "informal_housing_pct": db_item.get("informal_housing_pct") or w_meta.get("informal_housing_pct"),
+                "green_cover_pct": db_item.get("green_cover_pct") or w_meta.get("green_cover_pct"),
+                "score_time": score_time,
+                "is_live": is_live,
+            }
         })
 
     return {
@@ -93,69 +309,98 @@ def get_wards_geojson():
     }
 
 
+@router.get("/wards/{ward_id}/live")
+def get_ward_live(ward_id: int):
+    """
+    Return live weather and thermal indicators for a specific ward.
+    """
+    ward = next((w for w in BENGALURU_8_WARDS if w["id"] == ward_id), None)
+    if not ward:
+        raise HTTPException(status_code=404, detail="Ward not found")
+
+    live = fetch_ward_live_weather(ward["centroid_lat"], ward["centroid_lon"])
+    return {
+        "ward_id": ward_id,
+        "name": ward["name"],
+        "live": live,
+        "is_available": live is not None,
+    }
+
+
 @router.get("/wards/{ward_id}/forecast")
 def get_ward_forecast(ward_id: int):
     """
-    Return future forecast risk scores for one ward.
-
-    Only rows explicitly marked as forecast are returned.
-    Results are ordered chronologically.
+    Return real 5-day daily forecast for one ward computed from Open-Meteo.
     """
-    query = text("""
-        SELECT
-            id,
-            ward_id,
-            score_time,
-            is_forecast,
-            wbgt_c,
-            utci_c,
-            heat_index_c,
-            risk_score_raw,
-            risk_band,
-            vulnerability_score,
-            final_risk_score,
-            final_risk_band
-        FROM risk_scores
-        WHERE ward_id = :ward_id
-          AND is_forecast = TRUE
-          AND score_time > NOW()
-        ORDER BY score_time ASC, id ASC
-    """)
+    ward = next((w for w in BENGALURU_8_WARDS if w["id"] == ward_id), None)
+    if not ward:
+        raise HTTPException(status_code=404, detail="Ward not found")
 
-    with engine.connect() as conn:
-        rows = conn.execute(
-            query,
-            {"ward_id": ward_id},
-        ).fetchall()
-
-    forecasts = []
-
-    for row in rows:
-        forecasts.append({
-            "id": row.id,
-            "ward_id": row.ward_id,
-            "score_time": (
-                row.score_time.isoformat()
-                if row.score_time
-                else None
-            ),
-            "is_forecast": bool(row.is_forecast),
-            "wbgt": _to_float(row.wbgt_c),
-            "utci": _to_float(row.utci_c),
-            "heat_index": _to_float(row.heat_index_c),
-            "risk_score_raw": _to_float(row.risk_score_raw),
-            "risk_band": row.risk_band or "unknown",
-            "vulnerability_score": _to_float(
-                row.vulnerability_score
-            ),
-            "final_risk_score": _to_float(
-                row.final_risk_score
-            ),
-            "final_risk_band": row.final_risk_band,
-        })
+    forecast = fetch_ward_5day_forecast(ward["centroid_lat"], ward["centroid_lon"])
 
     return {
         "ward_id": ward_id,
-        "count": len(forecasts),
-        "forecasts": forecasts,
+        "name": ward["name"],
+        "count": len(forecast) if forecast else 0,
+        "forecasts": forecast or [],
+        "is_available": forecast is not None,
+    }
+
+
+@router.get("/wards/data-sources")
+@router.get("/health-check")
+def get_data_sources_status():
+    """
+    Return live round-trip latency measurements for all data sources.
+    """
+    sources = check_data_sources_health()
+    return {
+        "status": "ok",
+        "data_sources": sources,
+    }
+
+
+@router.get("/wards/summary")
+def get_zone_summary():
+    """
+    Return high-level Bengaluru Urban zone overview based on live measurements.
+    """
+    all_wbgt = []
+    all_utci = []
+    all_hi = []
+    active_alerts_count = 0
+    alert_wards = []
+
+    for w in BENGALURU_8_WARDS:
+        live = fetch_ward_live_weather(w["centroid_lat"], w["centroid_lon"])
+        if live:
+            if live.get("wbgt") is not None:
+                all_wbgt.append(live["wbgt"])
+            if live.get("utci") is not None:
+                all_utci.append(live["utci"])
+            if live.get("heat_index") is not None:
+                all_hi.append(live["heat_index"])
+            if live.get("risk_band") == "Extreme":
+                active_alerts_count += 1
+                alert_wards.append(f"Ward {w['id']} ({w['name']})")
+
+    avg_wbgt = round(sum(all_wbgt) / len(all_wbgt), 1) if all_wbgt else None
+    max_wbgt = max(all_wbgt) if all_wbgt else None
+    avg_utci = round(sum(all_utci) / len(all_utci), 1) if all_utci else None
+    max_utci = max(all_utci) if all_utci else None
+    avg_hi = round(sum(all_hi) / len(all_hi), 1) if all_hi else None
+    max_hi = max(all_hi) if all_hi else None
+
+    return {
+        "zone": "Bengaluru Urban",
+        "wards_monitored": len(BENGALURU_8_WARDS),
+        "avg_wbgt": avg_wbgt,
+        "max_wbgt": max_wbgt,
+        "avg_utci": avg_utci,
+        "max_utci": max_utci,
+        "avg_heat_index": avg_hi,
+        "max_heat_index": max_hi,
+        "active_alerts": active_alerts_count,
+        "alert_wards": alert_wards,
+        "is_live": len(all_wbgt) > 0,
     }

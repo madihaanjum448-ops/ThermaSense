@@ -62,4 +62,4 @@ frontend/dist/
 # Temporary files
 *.tmp
 *.temp
-temp_package.json
+temp_package.jsonvenv_new/

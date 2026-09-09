@@ -142,7 +142,8 @@ export default function ForecastPanel({ wards, selectedWardId, onSelectWard }) {
 
   useEffect(() => {
     if (selectedWardId) {
-      loadForecast(selectedWardId);
+      const timer = setTimeout(() => loadForecast(selectedWardId), 0);
+      return () => clearTimeout(timer);
     }
   }, [selectedWardId, loadForecast]);
 

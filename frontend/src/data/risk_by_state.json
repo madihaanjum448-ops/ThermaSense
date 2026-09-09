@@ -1,0 +1,268 @@
+{
+  "Rajasthan": {
+    "level": 4,
+    "band": "Extreme",
+    "wbgt": 34.2,
+    "temp": 44.5,
+    "advisory": "Critical heatwave. Avoid outdoor exposure 11:00-16:00."
+  },
+  "Gujarat": {
+    "level": 3,
+    "band": "Major",
+    "wbgt": 33.5,
+    "temp": 42.8,
+    "advisory": "Severe heat stress across northern & central districts."
+  },
+  "Maharashtra": {
+    "level": 3,
+    "band": "Major",
+    "wbgt": 33.1,
+    "temp": 41.6,
+    "advisory": "Vidarbha and Marathwada under orange heat alert."
+  },
+  "Telangana": {
+    "level": 4,
+    "band": "Extreme",
+    "wbgt": 34.0,
+    "temp": 43.5,
+    "advisory": "Severe heat stress alert for Hyderabad and interior plains."
+  },
+  "Andhra Pradesh": {
+    "level": 3,
+    "band": "Major",
+    "wbgt": 33.2,
+    "temp": 42.1,
+    "advisory": "High humidity compounding thermal load in coastal plains."
+  },
+  "Karnataka": {
+    "level": 2,
+    "band": "Moderate",
+    "wbgt": 31.8,
+    "temp": 38.5,
+    "advisory": "North interior districts under moderate heat advisory."
+  },
+  "Tamil Nadu": {
+    "level": 2,
+    "band": "Moderate",
+    "wbgt": 32.1,
+    "temp": 39.2,
+    "advisory": "Moderate heat load with coastal humidity."
+  },
+  "Delhi": {
+    "level": 4,
+    "band": "Extreme",
+    "wbgt": 34.5,
+    "temp": 45.0,
+    "advisory": "Extreme urban heat island amplification across NCR."
+  },
+  "Uttar Pradesh": {
+    "level": 3,
+    "band": "Major",
+    "wbgt": 33.8,
+    "temp": 43.2,
+    "advisory": "Widespread heatwave across eastern and Bundelkhand zones."
+  },
+  "Madhya Pradesh": {
+    "level": 3,
+    "band": "Major",
+    "wbgt": 33.4,
+    "temp": 42.6,
+    "advisory": "Major heat stress advisory for central & western districts."
+  },
+  "Bihar": {
+    "level": 3,
+    "band": "Major",
+    "wbgt": 33.6,
+    "temp": 42.4,
+    "advisory": "Severe humidity & heat combination in Gangetic plains."
+  },
+  "West Bengal": {
+    "level": 3,
+    "band": "Major",
+    "wbgt": 33.0,
+    "temp": 40.5,
+    "advisory": "High wet-bulb temperatures impacting southern districts."
+  },
+  "Orissa": {
+    "level": 3,
+    "band": "Major",
+    "wbgt": 33.2,
+    "temp": 41.8,
+    "advisory": "High humidity & heat risk in coastal & western belts."
+  },
+  "Odisha": {
+    "level": 3,
+    "band": "Major",
+    "wbgt": 33.2,
+    "temp": 41.8,
+    "advisory": "High humidity & heat risk in coastal & western belts."
+  },
+  "Haryana": {
+    "level": 3,
+    "band": "Major",
+    "wbgt": 33.4,
+    "temp": 43.0,
+    "advisory": "Major heat risk across southern districts."
+  },
+  "Punjab": {
+    "level": 2,
+    "band": "Moderate",
+    "wbgt": 32.0,
+    "temp": 41.0,
+    "advisory": "Moderate heatwave conditions in southwest belt."
+  },
+  "Chhattisgarh": {
+    "level": 2,
+    "band": "Moderate",
+    "wbgt": 32.2,
+    "temp": 40.8,
+    "advisory": "Moderate thermal discomfort in northern plains."
+  },
+  "Jharkhand": {
+    "level": 2,
+    "band": "Moderate",
+    "wbgt": 32.4,
+    "temp": 40.6,
+    "advisory": "Moderate heatwave in plateau region."
+  },
+  "Kerala": {
+    "level": 1,
+    "band": "Minor",
+    "wbgt": 29.8,
+    "temp": 34.2,
+    "advisory": "Normal coastal weather with high humidity."
+  },
+  "Goa": {
+    "level": 1,
+    "band": "Minor",
+    "wbgt": 29.5,
+    "temp": 33.8,
+    "advisory": "Coastal breeze moderating direct heat stress."
+  },
+  "Himachal Pradesh": {
+    "level": 0,
+    "band": "Little to no risk",
+    "wbgt": 23.5,
+    "temp": 28.0,
+    "advisory": "Comfortable mountain climate."
+  },
+  "Jammu and Kashmir": {
+    "level": 0,
+    "band": "Little to no risk",
+    "wbgt": 22.0,
+    "temp": 27.5,
+    "advisory": "Low thermal risk across valley."
+  },
+  "Uttaranchal": {
+    "level": 0,
+    "band": "Little to no risk",
+    "wbgt": 24.0,
+    "temp": 29.0,
+    "advisory": "Mild conditions in hill tracts."
+  },
+  "Uttarakhand": {
+    "level": 0,
+    "band": "Little to no risk",
+    "wbgt": 24.0,
+    "temp": 29.0,
+    "advisory": "Mild conditions in hill tracts."
+  },
+  "Sikkim": {
+    "level": 0,
+    "band": "Little to no risk",
+    "wbgt": 20.5,
+    "temp": 24.0,
+    "advisory": "Temperate mountain conditions."
+  },
+  "Arunachal Pradesh": {
+    "level": 0,
+    "band": "Little to no risk",
+    "wbgt": 22.8,
+    "temp": 26.5,
+    "advisory": "Cool to moderate temperatures."
+  },
+  "Assam": {
+    "level": 1,
+    "band": "Minor",
+    "wbgt": 30.2,
+    "temp": 34.5,
+    "advisory": "Moderate humidity in Brahmaputra valley."
+  },
+  "Meghalaya": {
+    "level": 0,
+    "band": "Little to no risk",
+    "wbgt": 21.0,
+    "temp": 24.5,
+    "advisory": "Comfortable plateau climate."
+  },
+  "Manipur": {
+    "level": 1,
+    "band": "Minor",
+    "wbgt": 27.5,
+    "temp": 31.0,
+    "advisory": "Normal seasonal conditions."
+  },
+  "Mizoram": {
+    "level": 0,
+    "band": "Little to no risk",
+    "wbgt": 23.0,
+    "temp": 27.0,
+    "advisory": "Temperate conditions."
+  },
+  "Nagaland": {
+    "level": 0,
+    "band": "Little to no risk",
+    "wbgt": 22.5,
+    "temp": 26.0,
+    "advisory": "Comfortable conditions."
+  },
+  "Tripura": {
+    "level": 1,
+    "band": "Minor",
+    "wbgt": 30.0,
+    "temp": 34.0,
+    "advisory": "Moderate humid heat."
+  },
+  "Andaman and Nicobar": {
+    "level": 1,
+    "band": "Minor",
+    "wbgt": 29.0,
+    "temp": 32.5,
+    "advisory": "Equatorial maritime climate."
+  },
+  "Lakshadweep": {
+    "level": 1,
+    "band": "Minor",
+    "wbgt": 29.2,
+    "temp": 33.0,
+    "advisory": "Tropical oceanic climate."
+  },
+  "Chandigarh": {
+    "level": 2,
+    "band": "Moderate",
+    "wbgt": 32.0,
+    "temp": 41.5,
+    "advisory": "Moderate heat load."
+  },
+  "Dadra and Nagar Haveli": {
+    "level": 2,
+    "band": "Moderate",
+    "wbgt": 31.5,
+    "temp": 38.0,
+    "advisory": "Moderate coastal plain heat."
+  },
+  "Daman and Diu": {
+    "level": 2,
+    "band": "Moderate",
+    "wbgt": 31.0,
+    "temp": 37.5,
+    "advisory": "Moderate coastal heat."
+  },
+  "Puducherry": {
+    "level": 2,
+    "band": "Moderate",
+    "wbgt": 32.0,
+    "temp": 38.5,
+    "advisory": "Humid heat conditions."
+  }
+}

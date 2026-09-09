@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import emblem from '../assets/emblem.png';
 import { fetchZoneSummary } from '../services/api';
-import HeatInfoCarousel from '../components/HeatInfoCarousel';
+import HeatIndexTable from '../components/HeatIndexTable';
 import {
   Thermometer,
   ShieldAlert,
@@ -285,10 +285,10 @@ export default function LandingPage({ onNavigateDashboard }) {
         </section>
 
         {/* ============================================================
-            HEAT FORECAST & RISK TOOLS CAROUSEL (WEATHER.GOV STYLE)
+            HEAT INDEX REFERENCE CHART (NOAA ROTHFUSZ STANDARD)
         ============================================================= */}
-        <section className="landing-carousel-section">
-          <HeatInfoCarousel onNavigateDashboard={onNavigateDashboard} />
+        <section className="landing-heat-index-section panel-card">
+          <HeatIndexTable />
         </section>
 
         {/* ============================================================

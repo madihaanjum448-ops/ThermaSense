@@ -148,7 +148,6 @@ Official Government Document · Authorized for Municipal & Health Department Use
       <section id="section-official-report" className="section-container official-report-section">
         <div className="section-header-block">
           <div className="header-left">
-            <span className="section-number-pill">08</span>
             <div>
               <h2 className="section-title">
                 {lang === 'hi'
@@ -188,7 +187,6 @@ Official Government Document · Authorized for Municipal & Health Department Use
     <section id="section-official-report" className="section-container official-report-section">
       <div className="section-header-block">
         <div className="header-left">
-          <span className="section-number-pill">08</span>
           <div>
             <h2 className="section-title">
               {lang === 'hi'

@@ -3581,6 +3581,132 @@ body {
   line-height: 1.35;
 }
 
+/* Compact styling for Landing Page Heat Index Section */
+.landing-heat-index-section {
+  padding: 1.15rem 1.25rem !important;
+  margin-bottom: 1.5rem;
+}
+
+.landing-heat-index-section .map-section-header {
+  margin-bottom: 0.65rem;
+}
+
+.landing-heat-index-section .section-main-heading {
+  font-size: 1.15rem;
+  margin-bottom: 0.2rem;
+}
+
+.landing-heat-index-section .section-lead-text {
+  font-size: 0.8rem;
+  margin-bottom: 0.4rem;
+}
+
+.landing-heat-index-section .heat-index-table-card {
+  padding: 0.75rem 0.9rem;
+  gap: 0.65rem;
+  border-radius: 8px;
+}
+
+.landing-heat-index-section .heat-index-scroll-wrapper {
+  max-height: 230px;
+  overflow-y: auto;
+  overflow-x: auto;
+  border-radius: 6px;
+  border: 1px solid var(--slate-200);
+}
+
+.landing-heat-index-section .heat-index-scroll-wrapper::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.landing-heat-index-section .heat-index-scroll-wrapper::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.landing-heat-index-section .heat-index-grid-table {
+  min-width: 620px;
+  font-size: 0.68rem;
+}
+
+.landing-heat-index-section .heat-index-grid-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.landing-heat-index-section .heat-index-grid-table th.corner-header-cell {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 10;
+  padding: 0.25rem 0.4rem !important;
+  min-width: 85px;
+  font-size: 0.62rem;
+}
+
+.landing-heat-index-section .heat-index-grid-table th.temp-col-header {
+  padding: 0.22rem 0.2rem;
+  font-size: 0.66rem;
+}
+
+.landing-heat-index-section .heat-index-grid-table th.humidity-row-header {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  padding: 0.18rem 0.35rem;
+  font-size: 0.66rem;
+}
+
+.landing-heat-index-section .heat-index-grid-table td.heat-index-cell {
+  padding: 0.2rem 0.2rem;
+  font-size: 0.68rem;
+  line-height: 1.1;
+}
+
+.landing-heat-index-section .hi-categories-legend {
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.45rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 6px;
+}
+
+@media (max-width: 900px) {
+  .landing-heat-index-section .hi-categories-legend {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.landing-heat-index-section .hi-legend-item {
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.landing-heat-index-section .hi-swatch {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  margin-top: 0;
+}
+
+.landing-heat-index-section .hi-legend-text strong {
+  font-size: 0.68rem;
+  display: block;
+}
+
+.landing-heat-index-section .hi-legend-text span {
+  font-size: 0.6rem;
+  line-height: 1.15;
+}
+
+.landing-heat-index-section .map-caption-note {
+  font-size: 0.66rem;
+  margin-top: 0;
+  padding: 0.25rem 0.5rem;
+}
+
 /* --- Section C: Who Can Benefit / Vulnerability Groups --- */
 .who-benefits-grid {
   display: grid;

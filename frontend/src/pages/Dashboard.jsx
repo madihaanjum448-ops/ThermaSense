@@ -120,7 +120,6 @@ export default function Dashboard({ onNavigateHome }) {
       ]);
 
       if (geoRes && geoRes.features && geoRes.features.length > 0) {
-        setGeoData(geoRes);
         const extracted = geoRes.features.map((f) => ({
           ...f.properties,
           geometry: f.geometry,
@@ -543,7 +542,6 @@ export default function Dashboard({ onNavigateHome }) {
         <section id="section-zone-overview" className="section-container zone-overview-section">
           <div className="section-header-block">
             <div className="header-left">
-              <span className="section-number-pill">01</span>
               <div>
                 <h2 className="section-title">{t.zoneHeader}</h2>
                 <p className="section-subtitle">{t.zoneSubtitle}</p>
@@ -683,7 +681,6 @@ export default function Dashboard({ onNavigateHome }) {
               <div className="panel-header map-header">
                 <div>
                   <div className="panel-badge-row">
-                    <span className="section-number-pill">02</span>
                     <span className="panel-tag">ALL-INDIA LIVE GIS & ZOOM EARTH TELEMETRY</span>
                   </div>
                   <h3 className="panel-title">{lang === 'hi' ? 'अखिल भारतीय हीट एवं मौसम मानचित्र' : 'All-India Heat & Meteorological Early Warning Map'}</h3>
@@ -715,7 +712,6 @@ export default function Dashboard({ onNavigateHome }) {
               <div className="panel-header detail-header">
                 <div className="detail-title-group">
                   <div className="panel-badge-row">
-                    <span className="section-number-pill">03</span>
                     <span className={`risk-pill-badge badge-${(currentWard.riskBand || 'caution').toLowerCase()}`}>
                       {(currentWard.riskBand || 'CAUTION').toUpperCase()} RISK
                     </span>
@@ -899,7 +895,6 @@ export default function Dashboard({ onNavigateHome }) {
         <section id="section-forecast" className="section-container forecast-strip-section">
           <div className="section-header-block">
             <div className="header-left">
-              <span className="section-number-pill">04</span>
               <div>
                 <h2 className="section-title">{t.forecastTitle}</h2>
                 <p className="section-subtitle">
@@ -982,7 +977,6 @@ export default function Dashboard({ onNavigateHome }) {
         <section id="section-health-impact" className="section-container health-impact-section">
           <div className="section-header-block">
             <div className="header-left">
-              <span className="section-number-pill">05</span>
               <div>
                 <h2 className="section-title">{t.healthImpactTitle}</h2>
                 <p className="section-subtitle">
@@ -1142,7 +1136,6 @@ export default function Dashboard({ onNavigateHome }) {
         <section id="section-data-sources" className="section-container data-sources-section">
           <div className="section-header-block">
             <div className="header-left">
-              <span className="section-number-pill">06</span>
               <div>
                 <h2 className="section-title">{t.dataSourcesTitle}</h2>
                 <p className="section-subtitle">Real measured round-trip latencies & telemetry integrity</p>
@@ -1193,7 +1186,6 @@ export default function Dashboard({ onNavigateHome }) {
         <section id="section-dispatch" className="section-container dispatch-section">
           <div className="section-header-block">
             <div className="header-left">
-              <span className="section-number-pill">07</span>
               <div>
                 <h2 className="section-title">
                   {t.dispatchTitle} {isAuthenticated ? `— ${currentWard.wardNumber} (${lang === 'hi' ? currentWard.nameHi : currentWard.name})` : ''}

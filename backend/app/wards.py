@@ -191,13 +191,13 @@ def _to_float(value):
 @router.get("/wards/geojson")
 def get_wards_geojson():
     """
-    Return all wards as GeoJSON populated with LIVE weather data and calculated indices.
+    Return all Karnataka / BBMP Bengaluru wards as GeoJSON populated with LIVE weather data and calculated indices.
     If live fetch fails, returns None for missing fields (no fabricated numbers).
     """
     features = []
 
-    # Attempt to fetch DB records if DB is configured
-    db_wards_map = {}
+    # Attempt to fetch DB records for Bengaluru wards if DB is configured
+    db_wards_by_name = {}
     if HAS_DB and engine:
         try:
             query = text("""
@@ -213,14 +213,15 @@ def get_wards_geojson():
                     w.slum_household_pct,
                     w.green_cover_pct
                 FROM wards w
+                WHERE w.city ILIKE '%Bengaluru%' OR w.city ILIKE '%Bangalore%'
             """)
             with engine.connect() as conn:
                 rows = conn.execute(query).fetchall()
                 for r in rows:
-                    db_wards_map[r.id] = {
+                    db_wards_by_name[r.name.lower().strip()] = {
                         "id": r.id,
                         "name": r.name,
-                        "city": r.city,
+                        "city": "Bengaluru",
                         "lat": _to_float(r.centroid_lat),
                         "lon": _to_float(r.centroid_lon),
                         "geom": json.loads(r.geom_json) if r.geom_json else None,
@@ -230,15 +231,17 @@ def get_wards_geojson():
                         "green_cover_pct": _to_float(r.green_cover_pct),
                     }
         except Exception:
-            db_wards_map = {}
+            db_wards_by_name = {}
 
     for w_meta in BENGALURU_8_WARDS:
         w_id = w_meta["id"]
-        db_item = db_wards_map.get(w_id, {})
-        lat = db_item.get("lat") or w_meta["centroid_lat"]
-        lon = db_item.get("lon") or w_meta["centroid_lon"]
-        name = db_item.get("name") or w_meta["name"]
-        city = db_item.get("city") or w_meta["city"]
+        db_item = db_wards_by_name.get(w_meta["name"].lower().strip(), {})
+        
+        # Ensure coordinates are strictly within Karnataka / Bengaluru bounds
+        lat = db_item.get("lat") if (db_item.get("lat") and 12.7 <= db_item.get("lat") <= 13.3) else w_meta["centroid_lat"]
+        lon = db_item.get("lon") if (db_item.get("lon") and 77.3 <= db_item.get("lon") <= 77.9) else w_meta["centroid_lon"]
+        name = w_meta["name"]
+        city = "Bengaluru"
 
         geometry = db_item.get("geom") or {
             "type": "Polygon",

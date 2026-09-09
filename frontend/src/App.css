@@ -5642,4 +5642,67 @@ body {
   }
 }
 
+/* --- Official Karnataka Map Toggle & Tag Styles --- */
+.tag-official-karnataka {
+  background: #ecfdf5 !important;
+  color: #065f46 !important;
+  border: 1px solid #a7f3d0 !important;
+  display: inline-flex !important;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 800 !important;
+}
+
+.official-map-toggle-group {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.map-scope-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.map-scope-btn:hover {
+  color: #0f172a;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.map-scope-btn.active {
+  background: #0a2540;
+  color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.map-embed-container .gis-map-wrapper {
+  height: 500px;
+  max-height: 500px;
+}
+
+.map-embed-container .gis-map-canvas-container {
+  height: calc(500px - 46px);
+  max-height: calc(500px - 46px);
+  position: relative;
+}
+
+.map-embed-container .gis-leaflet-container {
+  height: 100%;
+  width: 100%;
+}
+
 

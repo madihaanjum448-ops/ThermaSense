@@ -62,9 +62,9 @@ export default function OfficialLoginModal({ isOpen, onClose, onSuccess }) {
               <ShieldAlert size={22} className="text-amber-400" />
             </div>
             <div>
-              <h3 className="modal-heading">Authorized Official Sign In</h3>
+              <h3 className="modal-heading">Karnataka State Official Sign In</h3>
               <p className="modal-subheading">
-                State Disaster Management Authority & BBMP Command Console
+                Karnataka State Disaster Management Authority (KSDMA) & BBMP Command Console
               </p>
             </div>
           </div>
@@ -83,7 +83,7 @@ export default function OfficialLoginModal({ isOpen, onClose, onSuccess }) {
           <div className="official-auth-info-banner">
             <Lock size={15} className="flex-shrink-0" />
             <span>
-              Restricted to authorized disaster management, public health, and municipal officials for issuing live intervention orders.
+              Restricted to authorized Karnataka State & BBMP disaster management, public health, and municipal nodal officers for issuing live intervention directives.
             </span>
           </div>
 

@@ -41,7 +41,7 @@ export default function OfficialReportSection({
     hour: '2-digit',
     minute: '2-digit',
   });
-  const reportId = `NDMA-TS-${currentWard?.id ? currentWard.id.toUpperCase() : 'KAR-04'}-${Math.floor(
+  const reportId = `NDMA-TS-${currentWard?.id ? String(currentWard.id).toUpperCase() : 'KAR-04'}-${Math.floor(
     1000 + Math.random() * 9000
   )}`;
 

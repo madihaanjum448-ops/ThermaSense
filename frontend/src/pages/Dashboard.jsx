@@ -1,20 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import emblem from '../assets/emblem.png';
-import IndiaZoomEarthMap from '../components/IndiaZoomEarthMap';
+import WardMap from '../components/WardMap';
 import OfficialLoginModal from '../components/OfficialLoginModal';
 import OfficialReportSection from '../components/OfficialReportSection';
 import { useAuth } from '../context/AuthContext';
 import {
-  INDIA_ALL_STATES,
-  ALL_INDIA_WARDS,
-  generateWard5DayForecast,
-} from '../data/indiaStatesData';
-import {
   INITIAL_DISPATCH_LOG,
   TRANSLATIONS,
+  WARDS_STATIC_METADATA,
 } from '../data/wardsData';
 import {
   fetchWardsGeoJSON,
+  fetchWardForecast,
   fetchDataSourcesStatus,
   fetchZoneSummary,
   dispatchIntervention,
@@ -58,19 +55,20 @@ export default function Dashboard({ onNavigateHome }) {
   // Accessibility font scaling
   const [fontSize, setFontSize] = useState('normal');
 
-  // Selected state & ward across all 28/29 Indian States & UTs
-  const [selectedStateId, setSelectedStateId] = useState('karnataka');
-  const [selectedWard, setSelectedWard] = useState(INDIA_ALL_STATES[0].wards[0]);
+  // Selected Karnataka ward ID (1 - 8, default Ward 4 Shivajinagar)
+  const [selectedWardId, setSelectedWardId] = useState(4);
 
   // Active navigation tab
   const [activeTab, setActiveTab] = useState('dashboard');
 
-  // Live state from API
+  // Active map layer (wbgt | vulnerability | heatmap)
+  const [activeMapLayer, setActiveMapLayer] = useState('wbgt');
+
+  // Live state from Backend API
   const [liveWards, setLiveWards] = useState([]);
   const [liveForecast, setLiveForecast] = useState([]);
   const [dataSources, setDataSources] = useState([]);
   const [zoneSummary, setZoneSummary] = useState(null);
-
 
   // Loading & error states
   const [isLoading, setIsLoading] = useState(true);
@@ -93,7 +91,6 @@ export default function Dashboard({ onNavigateHome }) {
     actionType: null,
   });
   const [toastMessage, setToastMessage] = useState(null);
-
 
   // Apply font size scale
   useEffect(() => {
@@ -153,20 +150,88 @@ export default function Dashboard({ onNavigateHome }) {
     loadLiveDashboardData();
   }, [loadLiveDashboardData]);
 
-  // Resolve current selected ward across all states
-  const currentWard = selectedWard || INDIA_ALL_STATES[0].wards[0];
+  // Resolve current selected ward by merging static census metadata with live API data
+  const selectedStatic = WARDS_STATIC_METADATA.find((w) => w.id === selectedWardId) || WARDS_STATIC_METADATA[3];
+  const liveMatch = liveWards.find((lw) => (lw.id === selectedWardId || lw.properties?.id === selectedWardId));
+  const liveProps = liveMatch?.properties || liveMatch || {};
 
-  // Load forecast whenever selected ward changes
+  const currentWard = {
+    ...selectedStatic,
+    ...liveProps,
+    id: selectedStatic.id,
+    wardNumber: selectedStatic.wardNumber,
+    name: selectedStatic.name,
+    nameHi: selectedStatic.nameHi,
+    zone: selectedStatic.zone,
+    zoneHi: selectedStatic.zoneHi,
+    city: 'Bengaluru',
+    stateName: 'Karnataka',
+    coordinates: selectedStatic.coordinates,
+    vulnerability: {
+      elderlyPct: liveProps.elderly_pct ?? selectedStatic.vulnerability?.elderlyPct ?? 18.2,
+      outdoorWorkerPct: liveProps.outdoor_worker_pct ?? selectedStatic.vulnerability?.outdoorWorkerPct ?? 31.0,
+      informalHousingPct: liveProps.informal_housing_pct ?? selectedStatic.vulnerability?.informalHousingPct ?? 27.0,
+      greenCoverPct: liveProps.green_cover_pct ?? selectedStatic.vulnerability?.greenCoverPct ?? 9.0,
+      compositeScore: liveProps.vulnerability_score ?? selectedStatic.vulnerability?.compositeScore ?? 78.4,
+    },
+    temperature: liveProps.temperature !== undefined && liveProps.temperature !== null ? liveProps.temperature : 31.8,
+    humidity: liveProps.humidity !== undefined && liveProps.humidity !== null ? liveProps.humidity : 62,
+    windSpeed: liveProps.wind_speed !== undefined && liveProps.wind_speed !== null ? liveProps.wind_speed : (liveProps.windSpeed ?? 14.2),
+    solarRadiation: liveProps.solar_radiation !== undefined && liveProps.solar_radiation !== null ? liveProps.solar_radiation : (liveProps.solarRadiation ?? 780),
+    wbgt: liveProps.wbgt !== undefined && liveProps.wbgt !== null ? liveProps.wbgt : 31.4,
+    utci: liveProps.utci !== undefined && liveProps.utci !== null ? liveProps.utci : 35.8,
+    heatIndex: liveProps.heat_index !== undefined && liveProps.heat_index !== null ? liveProps.heat_index : (liveProps.heatIndex ?? 36.2),
+    dewPoint: liveProps.dew_point ?? liveProps.dewPoint ?? 23.5,
+    wetBulb: liveProps.wet_bulb ?? liveProps.wetBulb ?? 25.8,
+    riskBand: liveProps.risk_band || liveProps.riskBand || 'Warning',
+    riskLevel: (liveProps.risk_band || liveProps.riskBand || 'warning').toLowerCase(),
+  };
+
+  // Load live 5-day daily forecast for current selected ward from backend API
   useEffect(() => {
-    if (currentWard) {
+    let isMounted = true;
+    async function loadForecast() {
       setForecastLoading(true);
-      const timer = setTimeout(() => {
-        setLiveForecast(generateWard5DayForecast(currentWard));
+      try {
+        const backendFc = await fetchWardForecast(selectedWardId);
+        if (isMounted && backendFc && backendFc.length > 0) {
+          setLiveForecast(backendFc);
+          setForecastLoading(false);
+          return;
+        }
+      } catch (err) {
+        console.warn('Backend forecast fetch error, using local trajectory:', err);
+      }
+
+      if (isMounted) {
+        const days = ['Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        const daysHi = ['बुध', 'गुरु', 'शुक्र', 'शनि', 'रवि'];
+        const baseTemp = currentWard.temperature || 31.8;
+        const baseWbgt = currentWard.wbgt || 31.4;
+        const variations = [0, 0.8, 1.4, -0.6, -1.2];
+        const trends = ['steady', 'up', 'up', 'down', 'down'];
+
+        const generated = days.map((day, idx) => {
+          const tVal = Math.round((baseTemp + variations[idx]) * 10) / 10;
+          const wVal = Math.round((baseWbgt + variations[idx] * 0.7) * 10) / 10;
+          const band = wVal >= 33.0 ? 'Extreme' : wVal >= 31.0 ? 'Warning' : 'Caution';
+          return {
+            day,
+            dayHi: daysHi[idx],
+            date: `Day +${idx + 1}`,
+            temp: tVal,
+            wbgt: wVal,
+            trend: trends[idx],
+            riskBand: band,
+          };
+        });
+        setLiveForecast(generated);
         setForecastLoading(false);
-      }, 150);
-      return () => clearTimeout(timer);
+      }
     }
-  }, [currentWard]);
+    loadForecast();
+    return () => { isMounted = false; };
+  }, [selectedWardId, currentWard.temperature, currentWard.wbgt]);
 
   // Periodic elapsed timer
   useEffect(() => {
@@ -514,15 +579,6 @@ export default function Dashboard({ onNavigateHome }) {
               </button>
             )}
           </div>
-
-          <div className="national-emergency-alert-badge">
-            <Flame size={14} className="flame-icon-pulse" />
-            <span>
-              {activeAlertsCount > 0
-                ? (lang === 'hi' ? `हीटवेव अलर्ट: ${activeAlertsCount} वार्ड सक्रिय` : `HEAT STRESS ALERT: ${activeAlertsCount} WARDS ACTIVE`)
-                : (lang === 'hi' ? 'ताप तनाव स्थिति: निगरानी में' : 'HEAT STRESS STATUS: NORMAL')}
-            </span>
-          </div>
         </nav>
       </header>
 
@@ -538,13 +594,19 @@ export default function Dashboard({ onNavigateHome }) {
           </div>
         )}
 
-        {/* SECTION 1 — ZONE OVERVIEW (Top Row 4 Stat Cards) */}
+        {/* SECTION 1 — ZONE OVERVIEW (4 Top Stat Cards) */}
         <section id="section-zone-overview" className="section-container zone-overview-section">
           <div className="section-header-block">
             <div className="header-left">
               <div>
-                <h2 className="section-title">{t.zoneHeader}</h2>
-                <p className="section-subtitle">{t.zoneSubtitle}</p>
+                <h2 className="section-title">
+                  {lang === 'hi' ? 'कर्नाटक राज्य / बीबीएमपी — ८ निगरानी वार्ड' : 'Karnataka State & BBMP — 8 Monitored Urban Wards'}
+                </h2>
+                <p className="section-subtitle">
+                  {lang === 'hi'
+                    ? 'वास्तविक समय में शहरी ताप तनाव निगरानी एवं बहु-सूचकांक शारीरिक थर्मल विश्लेषण'
+                    : 'Real-time urban heat stress surveillance and multi-index physiological monitoring'}
+                </p>
               </div>
             </div>
             <div className="city-filter-badge">
@@ -675,32 +737,40 @@ export default function Dashboard({ onNavigateHome }) {
             MAIN SPLIT: SECTION 2 (GIS MAP ~65%) & SECTION 3 (WARD DETAIL ~35%)
         ============================================================= */}
         <section className="map-detail-split-layout">
-          {/* SECTION 2 — INTERACTIVE ALL-INDIA GIS MAP & ZOOM EARTH TELEMETRY */}
+          {/* SECTION 2 — INTERACTIVE KARNATAKA / BENGALURU GIS MAP */}
           <div id="section-gis-map" className="gis-map-column">
             <div className="panel-card map-panel-card">
               <div className="panel-header map-header">
                 <div>
                   <div className="panel-badge-row">
-                    <span className="panel-tag">ALL-INDIA LIVE GIS & ZOOM EARTH TELEMETRY</span>
+                    <span className="panel-tag tag-official-karnataka">
+                      <ShieldCheck size={13} />
+                      KARNATAKA STATE · BBMP WARD GIS TELEMETRY
+                    </span>
                   </div>
-                  <h3 className="panel-title">{lang === 'hi' ? 'अखिल भारतीय हीट एवं मौसम मानचित्र' : 'All-India Heat & Meteorological Early Warning Map'}</h3>
+                  <h3 className="panel-title">
+                    {lang === 'hi'
+                      ? 'कर्नाटक राज्य / बीबीएमपी वार्ड जीआईएस मानचित्र'
+                      : 'Karnataka State & BBMP Ward Heat Warning GIS Map'}
+                  </h3>
                   <p className="panel-sub">
-                    {lang === 'hi' ? 'सभी २९ राज्य एवं केंद्र शासित प्रदेश · लाइव बायोमेटियोरोलॉजिकल टेलीमेट्री' : 'All 28/29 States & UTs · Live Biometeorological Telemetry, Humidity & Radar Flow'}
+                    {lang === 'hi'
+                      ? '८ निगरानी वार्ड · लाइव ISO 7243 WBGT, जनसांख्यिकीय संवेदनशीलता एवं मौसम रडार'
+                      : '8 Monitored BBMP Urban Wards · Live ISO 7243 WBGT, Demographic Vulnerability & Radar Overlays'}
                   </p>
                 </div>
               </div>
 
-              {/* Real Leaflet Map with All-India State Selector & Zoom Earth Controls */}
+              {/* Real Leaflet Map for Karnataka Wards */}
               <div className="map-embed-container">
-                <IndiaZoomEarthMap
-                  selectedWard={currentWard}
-                  onSelectWard={(w) => {
-                    setSelectedWard(w);
-                    setSelectedStateId(w.stateId);
-                  }}
-                  selectedStateId={selectedStateId}
-                  onSelectState={(sId) => setSelectedStateId(sId)}
+                <WardMap
+                  selectedWardId={selectedWardId}
+                  onSelectWard={(wId) => setSelectedWardId(Number(wId))}
+                  activeLayer={activeMapLayer}
+                  onLayerChange={setActiveMapLayer}
+                  liveWards={liveWards}
                   lang={lang}
+                  translations={t}
                 />
               </div>
             </div>

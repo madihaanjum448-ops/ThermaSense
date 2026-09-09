@@ -454,9 +454,9 @@ export default function WardMap({
         {/* Selected Ward Floating Indicator on Map */}
         {selectedWard && (
           <div className="gis-map-selected-pill">
-            <span className={`pill-dot dot-${selectedWard.riskLevel}`}></span>
-            <span className="pill-name">{selectedWard.wardNumber}: {lang === 'hi' ? selectedWard.nameHi : selectedWard.name}</span>
-            <span className={`pill-badge badge-${selectedWard.riskLevel}`}>{selectedWard.riskBand.toUpperCase()}</span>
+            <span className={`pill-dot dot-${selectedWard.riskLevel || 'caution'}`}></span>
+            <span className="pill-name">{selectedWard.wardNumber || `Ward ${selectedWard.id}`}: {lang === 'hi' ? (selectedWard.nameHi || selectedWard.name) : selectedWard.name}</span>
+            <span className={`pill-badge badge-${selectedWard.riskLevel || 'caution'}`}>{(selectedWard.riskBand || 'Caution').toUpperCase()}</span>
           </div>
         )}
       </div>

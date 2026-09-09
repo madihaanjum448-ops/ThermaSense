@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import emblem from '../assets/emblem.png';
 import WardMap from '../components/WardMap';
+import OfficialLoginModal from '../components/OfficialLoginModal';
+import { useAuth } from '../context/AuthContext';
 import {
   WARDS_STATIC_METADATA,
   INITIAL_DISPATCH_LOG,
@@ -11,6 +13,7 @@ import {
   fetchWardForecast,
   fetchDataSourcesStatus,
   fetchZoneSummary,
+  dispatchIntervention,
 } from '../services/api';
 import {
   Flame,
@@ -37,7 +40,12 @@ import {
   FileText,
   SlidersHorizontal,
   AlertTriangle,
+  Lock,
+  LogOut,
+  UserCheck,
+  ShieldCheck,
 } from 'lucide-react';
+
 
 export default function Dashboard({ onNavigateHome }) {
   const [lang, setLang] = useState('en');
@@ -72,12 +80,18 @@ export default function Dashboard({ onNavigateHome }) {
   // Dispatch log state
   const [dispatchLog, setDispatchLog] = useState(INITIAL_DISPATCH_LOG);
 
+  // Authentication state
+  const { user, token, isAuthenticated, logout } = useAuth();
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [isDispatching, setIsDispatching] = useState(false);
+
   // Dispatch modal state
   const [dispatchModal, setDispatchModal] = useState({
     isOpen: false,
     actionType: null,
   });
   const [toastMessage, setToastMessage] = useState(null);
+
 
   // Apply font size scale
   useEffect(() => {
@@ -207,6 +221,10 @@ export default function Dashboard({ onNavigateHome }) {
   const baselineDiffHi = mortalityIndex ? (mortalityIndex >= 5.0 ? `+${(mortalityIndex - 4.5).toFixed(1)} 3-वर्षीय आधार रेखा की तुलना में` : `सामान्य आधार रेखा के भीतर`) : null;
 
   const openDispatchModal = (actionType) => {
+    if (!isAuthenticated) {
+      setIsLoginModalOpen(true);
+      return;
+    }
     setDispatchModal({ isOpen: true, actionType });
   };
 
@@ -214,7 +232,13 @@ export default function Dashboard({ onNavigateHome }) {
     setDispatchModal({ isOpen: false, actionType: null });
   };
 
-  const executeDispatch = () => {
+  const executeDispatch = async () => {
+    if (!isAuthenticated) {
+      setIsLoginModalOpen(true);
+      return;
+    }
+
+    setIsDispatching(true);
     const now = new Date();
     const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     let actionNameEn = '';
@@ -223,40 +247,52 @@ export default function Dashboard({ onNavigateHome }) {
 
     const wardLabelEn = `${currentWard.wardNumber} (${currentWard.name})`;
     const wardLabelHi = `${currentWard.wardNumber} (${currentWard.nameHi})`;
+    const officerDisplayName = user?.name || 'Officer';
 
     if (dispatchModal.actionType === 'sms') {
-      actionNameEn = `Emergency SMS/WhatsApp dispatched ${wardLabelEn}`;
-      actionNameHi = `आपातकालीन एसएमएस/व्हाट्सएप भेजा गया ${wardLabelHi}`;
+      actionNameEn = `${officerDisplayName} dispatched Emergency SMS/WhatsApp — ${wardLabelEn}`;
+      actionNameHi = `${officerDisplayName} द्वारा आपातकालीन एसएमएस/व्हाट्सएप भेजा गया — ${wardLabelHi}`;
       type = 'alert';
     } else if (dispatchModal.actionType === 'cooling') {
-      actionNameEn = `Cooling centre activated ${wardLabelEn}`;
-      actionNameHi = `शीतलन केंद्र सक्रिय किया गया ${wardLabelHi}`;
+      actionNameEn = `${officerDisplayName} activated Cooling Centre — ${wardLabelEn}`;
+      actionNameHi = `${officerDisplayName} द्वारा शीतलन केंद्र सक्रिय किया गया — ${wardLabelHi}`;
       type = 'cooling';
     } else if (dispatchModal.actionType === 'work_shift') {
-      actionNameEn = `Mandatory work-hour shift issued ${wardLabelEn}`;
-      actionNameHi = `कार्य-समय पाली संशोधन आदेश जारी ${wardLabelHi}`;
+      actionNameEn = `${officerDisplayName} issued Work-Hour Shift Order — ${wardLabelEn}`;
+      actionNameHi = `${officerDisplayName} द्वारा कार्य-समय पाली संशोधन आदेश जारी — ${wardLabelHi}`;
       type = 'work';
     }
 
-    const newEntry = {
-      id: Date.now(),
-      time: timeStr,
-      action: actionNameEn,
-      actionHi: actionNameHi,
-      status: 'Delivered',
-      statusHi: 'पुष्टीकृत',
-      type,
-      target: wardLabelEn,
-    };
+    try {
+      // Call authenticated backend dispatch endpoint
+      await dispatchIntervention(currentWard.id, dispatchModal.actionType, '', token);
 
-    setDispatchLog([newEntry, ...dispatchLog]);
-    closeDispatchModal();
-    showToast(
-      lang === 'hi'
-        ? `सफलतापूर्वक आदेश जारी: ${actionNameHi}`
-        : `Intervention dispatched successfully: ${actionNameEn}`
-    );
+      const newEntry = {
+        id: Date.now(),
+        time: timeStr,
+        action: actionNameEn,
+        actionHi: actionNameHi,
+        status: 'Delivered',
+        statusHi: 'पुष्टीकृत',
+        type,
+        target: wardLabelEn,
+        officer: officerDisplayName,
+      };
+
+      setDispatchLog([newEntry, ...dispatchLog]);
+      closeDispatchModal();
+      showToast(
+        lang === 'hi'
+          ? `सफलतापूर्वक आदेश जारी: ${actionNameHi}`
+          : `Intervention dispatched successfully: ${actionNameEn}`
+      );
+    } catch (err) {
+      showToast(`Dispatch failed: ${err.message || 'Server error'}`);
+    } finally {
+      setIsDispatching(false);
+    }
   };
+
 
   const scrollToSection = (id, tabName) => {
     setActiveTab(tabName);
@@ -412,8 +448,41 @@ export default function Dashboard({ onNavigateHome }) {
               <RefreshCw size={14} className={isSyncing ? 'spin-anim' : ''} />
               <span>{isSyncing ? t.syncing : t.refreshData}</span>
             </button>
+
+            {/* Official Authentication Header Controls */}
+            {isAuthenticated ? (
+              <div className="header-officer-session">
+                <div className="header-officer-badge" title={`Signed in as ${user?.name} (${user?.role} - ${user?.department})`}>
+                  <UserCheck size={14} className="officer-badge-icon" />
+                  <div className="officer-meta">
+                    <strong className="officer-name">{user?.name}</strong>
+                    <span className="officer-role">{user?.role}</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="gov-signout-btn"
+                  onClick={logout}
+                  title="Sign out from Official Console"
+                >
+                  <LogOut size={13} />
+                  <span>Sign Out</span>
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="gov-signin-btn"
+                onClick={() => setIsLoginModalOpen(true)}
+                title="Sign in as Authorized Official"
+              >
+                <Lock size={13} />
+                <span>Official Sign In</span>
+              </button>
+            )}
           </div>
         </div>
+
 
         {/* High Information Density Navigation Tabs */}
         <nav className="portal-nav-bar" aria-label="Dashboard views navigation">
@@ -1169,110 +1238,151 @@ export default function Dashboard({ onNavigateHome }) {
               <span className="section-number-pill">07</span>
               <div>
                 <h2 className="section-title">
-                  {t.dispatchTitle} — {currentWard.wardNumber} ({lang === 'hi' ? currentWard.nameHi : currentWard.name})
+                  {t.dispatchTitle} {isAuthenticated ? `— ${currentWard.wardNumber} (${lang === 'hi' ? currentWard.nameHi : currentWard.name})` : ''}
                 </h2>
                 <p className="section-subtitle">
-                  Direct operational authority command console for triggering public health mitigations
+                  {isAuthenticated
+                    ? 'Direct operational authority command console for triggering public health mitigations'
+                    : 'Restricted operational command console · State Disaster Management & BBMP'}
                 </p>
               </div>
             </div>
-            <div className="dispatch-authority-tag">
-              <ShieldAlert size={14} />
-              <span>Disaster Management Act 2005 · Authorized Terminal</span>
-            </div>
+
+            {isAuthenticated ? (
+              <div className="dispatch-authority-tag auth-status-verified">
+                <ShieldCheck size={14} className="text-emerald-400" />
+                <span>Official Active: {user?.name} · {user?.department}</span>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="gov-signin-btn btn-dispatch-header-signin"
+                onClick={() => setIsLoginModalOpen(true)}
+                title="Sign in with official credentials"
+              >
+                <Lock size={14} />
+                <span>Official Sign In</span>
+              </button>
+            )}
           </div>
 
-          <div className="dispatch-panel-card panel-card">
-            {/* Action Buttons */}
-            <div className="dispatch-action-buttons-group">
-              <button
-                type="button"
-                className="dispatch-action-btn btn-sms-alert"
-                onClick={() => openDispatchModal('sms')}
-              >
-                <div className="btn-icon-box">
-                  <Send size={18} />
-                </div>
-                <div className="btn-text-content">
-                  <strong className="btn-main-label">{t.actionSms}</strong>
-                  <span className="btn-sub-label">Cell-broadcast & WhatsApp ward broadcast</span>
-                </div>
-              </button>
+          {isAuthenticated ? (
+            <div className="dispatch-panel-card panel-card">
+              {/* Action Buttons (Authenticated Only) */}
+              <div className="dispatch-action-buttons-group">
+                <button
+                  type="button"
+                  className="dispatch-action-btn btn-sms-alert"
+                  onClick={() => openDispatchModal('sms')}
+                  title={t.actionSms}
+                >
+                  <div className="btn-icon-box">
+                    <Send size={18} />
+                  </div>
+                  <div className="btn-text-content">
+                    <strong className="btn-main-label">{t.actionSms}</strong>
+                    <span className="btn-sub-label">Cell-broadcast & WhatsApp ward broadcast</span>
+                  </div>
+                </button>
 
-              <button
-                type="button"
-                className="dispatch-action-btn btn-cooling-centre"
-                onClick={() => openDispatchModal('cooling')}
-              >
-                <div className="btn-icon-box">
-                  <HomeIcon size={18} />
-                </div>
-                <div className="btn-text-content">
-                  <strong className="btn-main-label">{t.actionCooling}</strong>
-                  <span className="btn-sub-label">Open community air-cooled shelters & ORS booths</span>
-                </div>
-              </button>
+                <button
+                  type="button"
+                  className="dispatch-action-btn btn-cooling-centre"
+                  onClick={() => openDispatchModal('cooling')}
+                  title={t.actionCooling}
+                >
+                  <div className="btn-icon-box">
+                    <HomeIcon size={18} />
+                  </div>
+                  <div className="btn-text-content">
+                    <strong className="btn-main-label">{t.actionCooling}</strong>
+                    <span className="btn-sub-label">Open community air-cooled shelters & ORS booths</span>
+                  </div>
+                </button>
 
-              <button
-                type="button"
-                className="dispatch-action-btn btn-work-shift"
-                onClick={() => openDispatchModal('work_shift')}
-              >
-                <div className="btn-icon-box">
-                  <Briefcase size={18} />
-                </div>
-                <div className="btn-text-content">
-                  <strong className="btn-main-label">{t.actionWorkShift}</strong>
-                  <span className="btn-sub-label">Enforce 12:00–16:00 outdoor construction respite</span>
-                </div>
-              </button>
-            </div>
-
-            {/* Activity Log Table */}
-            <div className="dispatch-activity-log-wrapper">
-              <div className="activity-log-header">
-                <div className="log-header-left">
-                  <Clock size={16} />
-                  <strong className="log-title">{t.activityLogTitle}</strong>
-                </div>
-                <span className="log-count-badge">
-                  {dispatchLog.length} {lang === 'hi' ? 'रिकॉर्ड' : 'Operations Recorded'}
-                </span>
+                <button
+                  type="button"
+                  className="dispatch-action-btn btn-work-shift"
+                  onClick={() => openDispatchModal('work_shift')}
+                  title={t.actionWorkShift}
+                >
+                  <div className="btn-icon-box">
+                    <Briefcase size={18} />
+                  </div>
+                  <div className="btn-text-content">
+                    <strong className="btn-main-label">{t.actionWorkShift}</strong>
+                    <span className="btn-sub-label">Enforce 12:00–16:00 outdoor construction respite</span>
+                  </div>
+                </button>
               </div>
 
-              <div className="activity-table-responsive">
-                <table className="gov-data-table">
-                  <thead>
-                    <tr>
-                      <th style={{ width: '120px' }}>{t.tableTime}</th>
-                      <th>{t.tableAction}</th>
-                      <th style={{ width: '160px' }}>{t.tableStatus}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dispatchLog.map((item) => (
-                      <tr key={item.id} className="activity-row">
-                        <td className="time-cell">
-                          <span className="time-mono">{item.time}</span>
-                        </td>
-                        <td className="action-cell">
-                          <strong className="action-text">{lang === 'hi' ? item.actionHi : item.action}</strong>
-                        </td>
-                        <td className="status-cell">
-                          <span className="status-badge-delivered">
-                            <CheckCircle2 size={14} className="status-check-icon" />
-                            <span>{lang === 'hi' ? item.statusHi : item.status}</span>
-                          </span>
-                        </td>
+              {/* Activity Log Table (Authenticated Only) */}
+              <div className="dispatch-activity-log-wrapper">
+                <div className="activity-log-header">
+                  <div className="log-header-left">
+                    <Clock size={16} />
+                    <strong className="log-title">{t.activityLogTitle}</strong>
+                  </div>
+                  <span className="log-count-badge">
+                    {dispatchLog.length} {lang === 'hi' ? 'रिकॉर्ड' : 'Operations Recorded'}
+                  </span>
+                </div>
+
+                <div className="activity-table-responsive">
+                  <table className="gov-data-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: '120px' }}>{t.tableTime}</th>
+                        <th>{t.tableAction}</th>
+                        <th style={{ width: '160px' }}>{t.tableStatus}</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {dispatchLog.map((item) => (
+                        <tr key={item.id} className="activity-row">
+                          <td className="time-cell">
+                            <span className="time-mono">{item.time}</span>
+                          </td>
+                          <td className="action-cell">
+                            <strong className="action-text">{lang === 'hi' ? item.actionHi : item.action}</strong>
+                          </td>
+                          <td className="status-cell">
+                            <span className="status-badge-delivered">
+                              <CheckCircle2 size={14} className="status-check-icon" />
+                              <span>{lang === 'hi' ? item.statusHi : item.status}</span>
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="dispatch-locked-public-card">
+              <div className="locked-public-icon-box">
+                <Lock size={26} />
+              </div>
+              <div className="locked-public-text-box">
+                <h3 className="locked-public-title">Authorized Official Access Required</h3>
+                <p className="locked-public-desc">
+                  Emergency intervention dispatch triggers (SMS broadcasts, cooling shelters, workplace respite orders) and operations logs are restricted to authorized Disaster Management and Municipal Health officials under the Disaster Management Act.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn-dispatch-unlock-primary"
+                onClick={() => setIsLoginModalOpen(true)}
+              >
+                <Lock size={15} />
+                <span>Official Sign In</span>
+              </button>
+            </div>
+          )}
         </section>
       </main>
+
 
       {/* ============================================================
           CONFIRMATION DISPATCH MODAL
@@ -1301,6 +1411,12 @@ export default function Dashboard({ onNavigateHome }) {
 
               <div className="modal-info-summary">
                 <div className="summary-row">
+                  <span>Authorized Officer:</span>
+                  <strong className="text-emerald-400">
+                    {user?.name} ({user?.role} · {user?.department})
+                  </strong>
+                </div>
+                <div className="summary-row">
                   <span>{t.targetWard}:</span>
                   <strong>{currentWard.wardNumber} ({currentWard.name})</strong>
                 </div>
@@ -1324,23 +1440,52 @@ export default function Dashboard({ onNavigateHome }) {
                 <Info size={14} />
                 <span>
                   This notification will be transmitted immediately through State Emergency Operations Centre (SEOC)
-                  and BBMP Disaster Management cell.
+                  and BBMP Disaster Management cell under official credentials of {user?.name}.
                 </span>
               </div>
             </div>
 
             <div className="modal-footer">
-              <button type="button" className="modal-btn-cancel" onClick={closeDispatchModal}>
+              <button
+                type="button"
+                className="modal-btn-cancel"
+                onClick={closeDispatchModal}
+                disabled={isDispatching}
+              >
                 {t.cancelBtn}
               </button>
-              <button type="button" className="modal-btn-confirm" onClick={executeDispatch}>
-                <Send size={15} />
-                {t.dispatchConfirmBtn}
+              <button
+                type="button"
+                className="modal-btn-confirm"
+                onClick={executeDispatch}
+                disabled={isDispatching}
+              >
+                {isDispatching ? (
+                  <>
+                    <RefreshCw size={14} className="spin-anim" />
+                    <span>Transmitting Order...</span>
+                  </>
+                ) : (
+                  <>
+                    <Send size={15} />
+                    <span>{t.dispatchConfirmBtn}</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Official Sign In Modal */}
+      <OfficialLoginModal
+        isOpen={isLoginModalOpen}
+        onClose={() => setIsLoginModalOpen(false)}
+        onSuccess={(loggedUser) => {
+          showToast(`Signed in successfully as ${loggedUser.name} (${loggedUser.department})`);
+        }}
+      />
+
 
       {/* ============================================================
           FOOTER

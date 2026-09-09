@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 
 from .thermal import router as thermal_router
 from .wards import router as wards_router
+from .auth import router as auth_router
 
 
 app = FastAPI(title="ThermaSense")
@@ -14,9 +15,15 @@ app.include_router(
 )
 
 app.include_router(
+    auth_router,
+    tags=["Authentication"],
+)
+
+app.include_router(
     wards_router,
     tags=["Wards"],
 )
+
 
 
 @app.get("/")

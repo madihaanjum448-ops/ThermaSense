@@ -1,34 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ChevronLeft, ChevronRight, Image as ImageIcon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Activity, ShieldCheck, Flame, HardHat, HeartPulse } from 'lucide-react';
 import HeatIndexTable from './HeatIndexTable';
+import indiaHeatRiskImg from '../assets/india-heat-risk-overview.jpg';
+import whoBenefitsImg from '../assets/who-benefits-heat-monitoring.jpg';
 
 const TOTAL_SLIDES = 3;
 const AUTO_ADVANCE_MS = 8000;
 
-function SlideImageWithFallback({ src, alt, fallbackLabel }) {
-  const [hasError, setHasError] = useState(false);
-
-  return (
-    <div className="carousel-slide-image-wrap">
-      {hasError ? (
-        <div className="carousel-slide-image-fallback">
-          <ImageIcon size={30} className="fallback-icon" />
-          <p className="fallback-title">Image not yet added — place file at <code>frontend/public{src}</code></p>
-          {fallbackLabel && <span className="fallback-sub">{fallbackLabel}</span>}
-        </div>
-      ) : (
-        <img
-          src={src}
-          alt={alt}
-          className="carousel-slide-image"
-          onError={() => setHasError(true)}
-        />
-      )}
-    </div>
-  );
-}
-
-export default function HeatInfoCarousel() {
+export default function HeatInfoCarousel({ onNavigateDashboard }) {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
   const carouselRef = useRef(null);
@@ -85,7 +64,7 @@ export default function HeatInfoCarousel() {
         onClick={goToPrev}
         aria-label="Previous slide"
       >
-        <ChevronLeft size={20} />
+        <ChevronLeft size={22} />
       </button>
 
       {/* Right Navigation Arrow */}
@@ -95,53 +74,110 @@ export default function HeatInfoCarousel() {
         onClick={goToNext}
         aria-label="Next slide"
       >
-        <ChevronRight size={20} />
+        <ChevronRight size={22} />
       </button>
 
-      {/* Active Slide Stage (Scrolls internally if needed) */}
+      {/* Active Slide Stage */}
       <div className="carousel-slide-stage">
-        {/* Slide 0: India HeatRisk Map (Static Image) */}
+        {/* Slide 0: India HeatRisk Map + Overview info */}
         {currentSlide === 0 && (
-          <div className="carousel-slide-content">
-            <div className="map-section-header compact-header">
-              <div className="header-badge-row">
-                <span className="gov-section-pill">NATIONAL OVERVIEW</span>
-                <span className="source-tag">NWP & Biometeorological Model</span>
-              </div>
-              <h3 className="section-main-heading">ThermaSense HeatRisk — National Overview</h3>
-              <p className="section-lead-text">
-                Combines weather, climate, and demographic data to identify potentially dangerous heat that may lead to increased health risk.
-              </p>
+          <div className="carousel-slide-split">
+            <div className="slide-split-media">
+              <img
+                src={indiaHeatRiskImg}
+                alt="Thermogenesis Heat Risk — India National Overview"
+                className="carousel-split-image"
+              />
             </div>
-            <SlideImageWithFallback
-              src="./india-heat-risk-overview.png"
-              alt="Thermogenesis Heat Risk map of India showing risk levels by region"
-              fallbackLabel="National HeatRisk Map Overview"
-            />
+            <div className="slide-split-info">
+              <div className="split-badge-row">
+                <span className="split-status-pill">
+                  <span className="cta-live-dot"></span>
+                  NATIONAL NWP MODELING
+                </span>
+                <span className="source-tag">IMD & NDMA Framework</span>
+              </div>
+              <h3 className="split-title">ThermaSense National HeatRisk</h3>
+              <p className="split-description">
+                Combines high-resolution NWP weather modeling with human thermogenesis metrics (WBGT & UTCI) to identify high-risk heat stress zones before heatwaves peak.
+              </p>
+              <div className="split-features-list">
+                <div className="split-feature-item">
+                  <Flame size={17} className="text-red" />
+                  <div>
+                    <strong>Predictive Early Warnings</strong>
+                    <span>5-day advanced biometric risk forecast per ward centroid</span>
+                  </div>
+                </div>
+                <div className="split-feature-item">
+                  <ShieldCheck size={17} className="text-amber" />
+                  <div>
+                    <strong>Work-Rest Protocols</strong>
+                    <span>Automated threshold alerts for municipal and gig sectors</span>
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="split-cta-btn"
+                onClick={onNavigateDashboard}
+              >
+                <Activity size={16} />
+                <span>Open Live Ward Map →</span>
+              </button>
+            </div>
           </div>
         )}
 
         {/* Slide 1: Heat Index Reference Table (Live Matrix) */}
         {currentSlide === 1 && <HeatIndexTable />}
 
-        {/* Slide 2: Who Can Benefit from WBGT & UTCI Monitoring (Static Image) */}
+        {/* Slide 2: Who Can Benefit + Operational Dashboard Card */}
         {currentSlide === 2 && (
-          <div className="carousel-slide-content">
-            <div className="map-section-header compact-header">
-              <div className="header-badge-row">
-                <span className="gov-section-pill">PUBLIC HEALTH FOCUS</span>
-                <span className="source-tag">Vulnerability & Protection Matrix</span>
-              </div>
-              <h3 className="section-main-heading">Who Can Benefit from WBGT & UTCI Monitoring</h3>
-              <p className="section-lead-text">
-                Heat is a major weather-related hazard in India. Heat-related illness and fatalities are preventable.
-              </p>
+          <div className="carousel-slide-split">
+            <div className="slide-split-media">
+              <img
+                src={whoBenefitsImg}
+                alt="Who Can Benefit from Thermogenesis Insights"
+                className="carousel-split-image"
+              />
             </div>
-            <SlideImageWithFallback
-              src="./who-benefits-heat-monitoring.png"
-              alt="Groups who benefit from heat stress monitoring: outdoor workers, active people, elderly and vulnerable individuals, people with health conditions"
-              fallbackLabel="Vulnerability & Protection Matrix"
-            />
+            <div className="slide-split-info split-card-navy">
+              <div className="split-badge-row">
+                <span className="split-status-pill pill-live-green">
+                  <span className="cta-live-dot"></span>
+                  OPERATIONAL CONSOLE
+                </span>
+              </div>
+              <h3 className="split-title title-light">Operational Heat Dashboard</h3>
+              <p className="split-description desc-light">
+                Real-time ward-level GIS biometeorological telemetry, live dispatch alerts, and hospital surge coordination.
+              </p>
+              <div className="split-features-list">
+                <div className="split-feature-item feature-item-light">
+                  <HardHat size={17} className="text-saffron" />
+                  <div>
+                    <strong>Outdoor & Informal Workers</strong>
+                    <span>Targeted hydration alerts & municipal cooling shelter activation</span>
+                  </div>
+                </div>
+                <div className="split-feature-item feature-item-light">
+                  <HeartPulse size={17} className="text-red" />
+                  <div>
+                    <strong>High-Risk Populations</strong>
+                    <span>Elderly, children & vulnerable communities surveillance</span>
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="split-cta-btn btn-saffron"
+                onClick={onNavigateDashboard}
+              >
+                <Activity size={16} />
+                <span>Launch Monitoring Console →</span>
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -150,7 +186,11 @@ export default function HeatInfoCarousel() {
       <div className="carousel-dots-row" role="tablist" aria-label="Slide navigation">
         {Array.from({ length: TOTAL_SLIDES }).map((_, idx) => {
           const isActive = currentSlide === idx;
-          const slideNames = ['India HeatRisk Map', 'Heat Index Reference Chart', 'Who Can Benefit'];
+          const slideNames = [
+            'India HeatRisk Overview',
+            'Heat Index Reference Chart',
+            'Who Can Benefit'
+          ];
           return (
             <button
               key={idx}

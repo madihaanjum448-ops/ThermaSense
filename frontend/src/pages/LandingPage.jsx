@@ -288,7 +288,7 @@ export default function LandingPage({ onNavigateDashboard }) {
             HEAT FORECAST & RISK TOOLS CAROUSEL (WEATHER.GOV STYLE)
         ============================================================= */}
         <section className="landing-carousel-section">
-          <HeatInfoCarousel />
+          <HeatInfoCarousel onNavigateDashboard={onNavigateDashboard} />
         </section>
 
         {/* ============================================================
@@ -532,7 +532,7 @@ export default function LandingPage({ onNavigateDashboard }) {
             ============================================================= */}
             <section id="plain-language-explainer" className="plain-explainer-section">
               <div className="explainer-header">
-                <Info size={20} className="explainer-icon" />
+                <Info size={18} className="explainer-icon" />
                 <div>
                   <h3 className="explainer-title">Understanding Thermal Indices in Plain Language</h3>
                   <p className="explainer-sub">Why ambient thermometer readings alone don't tell the whole story</p>
@@ -547,10 +547,10 @@ export default function LandingPage({ onNavigateDashboard }) {
                     <h4>WBGT (Wet-Bulb Globe Temp)</h4>
                   </div>
                   <p>
-                    WBGT combines air temperature, humidity, wind, and solar radiation into a single number representing the heat load on a person working under direct sunlight. Unlike air temp, WBGT tells us if sweat can actually evaporate to cool your body.
+                    Combines air temperature, humidity, wind, and direct solar irradiance into a single measure of human heat load under sunlight. Indicates whether sweat can evaporate effectively.
                   </p>
                   <div className="explainer-threshold">
-                    <strong>Critical Level:</strong> &gt; 33.0°C requires mandatory work-rest cycles.
+                    <strong>Critical:</strong> &gt;33.0°C requires mandatory work-rest cycles.
                   </div>
                 </div>
 
@@ -561,10 +561,10 @@ export default function LandingPage({ onNavigateDashboard }) {
                     <h4>UTCI (Universal Thermal Climate Index)</h4>
                   </div>
                   <p>
-                    UTCI is the state-of-the-art biometeorological index based on a sophisticated multi-node human thermoregulation model. It describes the thermal stress felt by the human body across diverse microclimates and radiation environments.
+                    Multi-node biometeorological thermoregulation model describing total physiological stress felt across microclimates and radiation environments.
                   </p>
                   <div className="explainer-threshold">
-                    <strong>Critical Level:</strong> &gt; 38.0°C indicates strong to extreme thermal stress.
+                    <strong>Critical:</strong> &gt;38.0°C indicates strong to extreme thermal stress.
                   </div>
                 </div>
 
@@ -575,10 +575,10 @@ export default function LandingPage({ onNavigateDashboard }) {
                     <h4>Heat Index (Apparent Temp)</h4>
                   </div>
                   <p>
-                    Heat Index (NOAA Rothfusz formula) calculates how hot it feels when relative humidity is combined with the air temperature in shaded areas. High humidity stops sweat from evaporating, causing the body to overheat rapidly.
+                    Standard NOAA formula measuring apparent temperature in shade by coupling humidity with dry-bulb temperature. High humidity prevents evaporative cooling.
                   </p>
                   <div className="explainer-threshold">
-                    <strong>Critical Level:</strong> &gt; 42.0°C represents dangerous heat cramps and exhaustion.
+                    <strong>Critical:</strong> &gt;42.0°C represents dangerous heat illness risk.
                   </div>
                 </div>
               </div>
@@ -587,9 +587,10 @@ export default function LandingPage({ onNavigateDashboard }) {
 
           {/* Sidebar: Emergency Helplines & Official Resources */}
           <aside className="landing-sidebar">
+            {/* Emergency Helplines */}
             <div className="sidebar-card helpline-card">
               <div className="sidebar-card-header">
-                <PhoneCall size={18} className="helpline-icon" />
+                <PhoneCall size={16} className="helpline-icon" />
                 <h3>Emergency Helplines</h3>
               </div>
               <div className="helpline-items">
@@ -612,49 +613,38 @@ export default function LandingPage({ onNavigateDashboard }) {
               </div>
             </div>
 
+            {/* Official Institutional Portals */}
             <div className="sidebar-card resources-card">
               <div className="sidebar-card-header">
-                <ExternalLink size={18} />
+                <ExternalLink size={16} />
                 <h3>Official Institutional Portals</h3>
               </div>
               <ul className="resource-links-list">
                 <li>
                   <a href="https://ndma.gov.in" target="_blank" rel="noopener noreferrer">
                     <span>National Disaster Management Authority</span>
-                    <ChevronRight size={14} />
+                    <ChevronRight size={13} />
                   </a>
                 </li>
                 <li>
                   <a href="https://moes.gov.in" target="_blank" rel="noopener noreferrer">
                     <span>Ministry of Earth Sciences (MoES)</span>
-                    <ChevronRight size={14} />
+                    <ChevronRight size={13} />
                   </a>
                 </li>
                 <li>
                   <a href="https://mausam.imd.gov.in" target="_blank" rel="noopener noreferrer">
                     <span>India Meteorological Department (IMD)</span>
-                    <ChevronRight size={14} />
+                    <ChevronRight size={13} />
                   </a>
                 </li>
                 <li>
                   <a href="https://ncdc.mohfw.gov.in" target="_blank" rel="noopener noreferrer">
                     <span>National Centre for Disease Control</span>
-                    <ChevronRight size={14} />
+                    <ChevronRight size={13} />
                   </a>
                 </li>
               </ul>
-            </div>
-
-            <div className="sidebar-card cta-sidebar-card">
-              <h4>Operational Dashboard</h4>
-              <p>District officials, municipal commissioners, and disaster managers can access real-time ward level GIS telemetry and trigger SMS/WhatsApp alerts.</p>
-              <button
-                type="button"
-                className="sidebar-cta-btn"
-                onClick={onNavigateDashboard}
-              >
-                Launch Monitoring Console →
-              </button>
             </div>
           </aside>
         </div>

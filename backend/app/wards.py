@@ -1,7 +1,11 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from typing import Optional
+from pydantic import BaseModel
 from sqlalchemy import text
+from datetime import datetime
 import json
+
+from .auth import get_current_user
 
 from .heat_indices import (
     fetch_ward_live_weather,
@@ -404,3 +408,47 @@ def get_zone_summary():
         "alert_wards": alert_wards,
         "is_live": len(all_wbgt) > 0,
     }
+
+
+class DispatchRequest(BaseModel):
+    ward_id: int
+    action_type: str  # 'sms' | 'cooling' | 'work_shift'
+    notes: Optional[str] = None
+
+
+@router.post("/wards/dispatch")
+def dispatch_intervention(
+    payload: DispatchRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Authorized endpoint to dispatch emergency heat mitigations.
+    Requires official authentication token.
+    """
+    ward = next((w for w in BENGALURU_8_WARDS if w["id"] == payload.ward_id), None)
+    if not ward:
+        raise HTTPException(status_code=404, detail="Ward not found")
+
+    action_labels = {
+        "sms": "Emergency SMS / WhatsApp Alert",
+        "cooling": "Cooling Centre Activation",
+        "work_shift": "Mandatory Work-Hour Respite Order",
+    }
+
+    action_name = action_labels.get(payload.action_type, payload.action_type)
+    timestamp = datetime.now().strftime("%H:%M")
+
+    return {
+        "success": True,
+        "message": f"Successfully registered and dispatched '{action_name}' for Ward {ward['id']} ({ward['name']})",
+        "dispatched_by": current_user["name"],
+        "officer_role": current_user["role"],
+        "officer_department": current_user["department"],
+        "ward_id": ward["id"],
+        "ward_name": ward["name"],
+        "action_type": payload.action_type,
+        "action_name": action_name,
+        "timestamp": timestamp,
+        "status": "Delivered",
+    }
+

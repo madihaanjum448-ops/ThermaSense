@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import './App.css';
 import LandingPage from './pages/LandingPage';
 import Dashboard from './pages/Dashboard';
+import { AuthProvider } from './context/AuthContext';
 
 function App() {
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
@@ -20,12 +21,16 @@ function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // If path starts with /dashboard, render Dashboard, else LandingPage
-  if (currentPath === '/dashboard' || currentPath.startsWith('/dashboard')) {
-    return <Dashboard onNavigateHome={() => navigateTo('/')} />;
-  }
-
-  return <LandingPage onNavigateDashboard={() => navigateTo('/dashboard')} />;
+  return (
+    <AuthProvider>
+      {currentPath === '/dashboard' || currentPath.startsWith('/dashboard') ? (
+        <Dashboard onNavigateHome={() => navigateTo('/')} />
+      ) : (
+        <LandingPage onNavigateDashboard={() => navigateTo('/dashboard')} />
+      )}
+    </AuthProvider>
+  );
 }
 
 export default App;
+

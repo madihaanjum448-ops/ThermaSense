@@ -1894,19 +1894,21 @@ export function getWardById(id) {
 
 // Generate 5-day daily forecast for a given ward
 export function generateWard5DayForecast(ward) {
-  const baseTemp = ward.temperature || 33.0;
-  const baseWbgt = ward.wbgt || 31.0;
-  const baseHum = ward.humidity || 65;
+  if (!ward) return [];
+  const baseTemp = Number(ward.temperature ?? ward.temp_c ?? 34.2);
+  const baseWbgt = Number(ward.wbgt ?? ward.wbgt_c ?? 31.4);
+  const baseHum = Number(ward.humidity ?? ward.humidity_pct ?? 65);
+  const baseWind = Number(ward.windSpeed ?? ward.wind_speed_kmh ?? ward.wind_speed ?? 12.0);
   const days = ['Today', 'Tomorrow', 'Day 3', 'Day 4', 'Day 5'];
   const daysHi = ['आज', 'कल', 'तीसरा दिन', 'चौथा दिन', 'पांचवां दिन'];
 
   return days.map((day, i) => {
     const tempVariation = (i % 2 === 0 ? 0.8 : -0.6) * i;
-    const maxTemp = Math.round((baseTemp + tempVariation + 2.5) * 10) / 10;
+    const maxTemp = Math.round((baseTemp + tempVariation + (i === 0 ? 0 : 2.2)) * 10) / 10;
     const minTemp = Math.round((baseTemp - 7.0 + tempVariation * 0.5) * 10) / 10;
     const wbgtMax = Math.round((baseWbgt + tempVariation * 0.7) * 10) / 10;
     const humidityAvg = Math.min(95, Math.max(30, Math.round(baseHum + (i % 3 === 0 ? 5 : -4))));
-    const windSpeedAvg = Math.round((ward.windSpeed + (i % 2 === 0 ? 2 : -1.5)) * 10) / 10;
+    const windSpeedAvg = Math.round((baseWind + (i % 2 === 0 ? 2 : -1.5)) * 10) / 10;
 
     let riskBand = 'Caution';
     if (wbgtMax >= 33.0) riskBand = 'Extreme';
@@ -1930,20 +1932,24 @@ export function generateWard5DayForecast(ward) {
     const date = new Date();
     date.setDate(date.getDate() + i);
     const dateStr = `${date.getDate()} ${date.toLocaleString('en', { month: 'short' })}`;
+    const trend = i === 0 ? 'steady' : tempVariation >= 0 ? 'up' : 'down';
 
     return {
       day,
       dayHi: daysHi[i],
       date: dateStr,
+      temp: maxTemp,
       maxTemp,
       minTemp,
+      wbgt: wbgtMax,
       wbgtMax,
       humidityAvg,
       windSpeedAvg,
       riskBand,
+      trend,
       condition: conditions[i % conditions.length],
       conditionHi: conditionsHi[i % conditionsHi.length],
-      rainProb: ward.precipitation > 0 ? 60 + i * 5 : 10 + i * 5,
+      rainProb: (ward.precipitation || 0) > 0 ? 60 + i * 5 : 10 + i * 5,
     };
   });
 }

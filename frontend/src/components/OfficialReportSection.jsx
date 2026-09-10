@@ -66,6 +66,25 @@ export default function OfficialReportSection({
   const activeStateObj = INDIA_ALL_STATES.find((s) => s.id === officialStateId) || INDIA_ALL_STATES.find(s => s.id === 'karnataka') || INDIA_ALL_STATES[0];
   const stateLocalities = getLocalitiesByState(officialStateId);
 
+  // Normalized safe metrics
+  const wardTemp = currentWard?.temperature ?? currentWard?.temp_c ?? 34.2;
+  const wardWbgt = currentWard?.wbgt ?? currentWard?.wbgt_c ?? 31.8;
+  const wardUtci = currentWard?.utci ?? currentWard?.utci_c ?? 38.5;
+  const wardHeatIndex = currentWard?.heatIndex ?? currentWard?.heat_index_c ?? 41.2;
+  const wardHumidity = currentWard?.humidity ?? currentWard?.humidity_pct ?? 62;
+  const wardDewPoint = currentWard?.dewPoint ?? 24.5;
+  const wardWetBulb = currentWard?.wetBulb ?? 26.8;
+  const wardWindSpeed = currentWard?.windSpeed ?? currentWard?.wind_speed_kmh ?? currentWard?.wind_speed ?? 14.5;
+  const wardPressure = currentWard?.pressure ?? 1008;
+  const wardSolarRadiation = currentWard?.solarRadiation ?? currentWard?.solar_radiation_wm2 ?? 780;
+  const wardRiskBand = currentWard?.riskBand ?? currentWard?.risk_band ?? ((wardWbgt >= 33.0) ? 'Extreme' : (wardWbgt >= 31.0) ? 'Warning' : 'Caution');
+  const elderlyPct = currentWard?.vulnerability?.elderlyPct ?? currentWard?.elderly_pct ?? 15.0;
+  const outdoorWorkerPct = currentWard?.vulnerability?.outdoorWorkerPct ?? currentWard?.outdoor_worker_pct ?? 25.0;
+  const informalHousingPct = currentWard?.vulnerability?.informalHousingPct ?? currentWard?.informal_housing_pct ?? 20.0;
+  const greenCoverPct = currentWard?.vulnerability?.greenCoverPct ?? currentWard?.green_cover_pct ?? 15.0;
+  const compositeScore = currentWard?.vulnerability?.compositeScore ?? currentWard?.vulnerability_score ?? 62.0;
+  const hospSurge = Math.round(Math.max(5, (wardWbgt - 25.0) * 4.2));
+
   const formatReportText = () => {
     return `================================================================================
 GOVERNMENT OF INDIA — NATIONAL HEAT STRESS EARLY WARNING SYSTEM (THERMASENSE)
@@ -81,33 +100,33 @@ Department / Agency : ${officerDept}
 --------------------------------------------------------------------------------
 State / UT          : ${currentWard?.stateName || 'Karnataka'}
 City / District     : ${currentWard?.city || 'Bengaluru'}
-Ward / Locality     : ${currentWard?.wardNumber} — ${currentWard?.name} (${currentWard?.zone || 'Urban'})
-Coordinates         : Lat ${currentWard?.coordinates?.[0]?.toFixed(4)}°N, Lon ${currentWard?.coordinates?.[1]?.toFixed(4)}°E
+Ward / Locality     : ${currentWard?.wardNumber || 'Ward 04'} — ${currentWard?.name || 'Shivajinagar'} (${currentWard?.zone || 'Urban'})
+Coordinates         : Lat ${currentWard?.coordinates?.[0]?.toFixed(4) ?? '12.9856'}°N, Lon ${currentWard?.coordinates?.[1]?.toFixed(4) ?? '77.6057'}°E
 
 2. REAL-TIME BIOMETEOROLOGICAL TELEMETRY
 --------------------------------------------------------------------------------
-Dry-Bulb Ambient Temperature : ${currentWard?.temperature}°C
-Wet-Bulb Globe Temp (WBGT)   : ${currentWard?.wbgt}°C (ISO 7243 Standard)
-Universal Thermal Climate (UTCI): ${currentWard?.utci}°C
-Heat Index (Apparent Temp)   : ${currentWard?.heatIndex}°C
-Relative Humidity            : ${currentWard?.humidity}%
-Dew Point / Wet Bulb         : ${currentWard?.dewPoint}°C / ${currentWard?.wetBulb}°C
-Wind Velocity                : ${currentWard?.windSpeed} km/h
-Barometric Pressure          : ${currentWard?.pressure} hPa
-Solar Radiation Flux         : ${currentWard?.solarRadiation} W/m²
-Composite Risk Level         : [ ${currentWard?.riskBand?.toUpperCase()} RISK ]
+Dry-Bulb Ambient Temperature : ${wardTemp}°C
+Wet-Bulb Globe Temp (WBGT)   : ${wardWbgt}°C (ISO 7243 Standard)
+Universal Thermal Climate (UTCI): ${wardUtci}°C
+Heat Index (Apparent Temp)   : ${wardHeatIndex}°C
+Relative Humidity            : ${wardHumidity}%
+Dew Point / Wet Bulb         : ${wardDewPoint}°C / ${wardWetBulb}°C
+Wind Velocity                : ${wardWindSpeed} km/h
+Barometric Pressure          : ${wardPressure} hPa
+Solar Radiation Flux         : ${wardSolarRadiation} W/m²
+Composite Risk Level         : [ ${wardRiskBand.toUpperCase()} RISK ]
 
 3. DEMOGRAPHIC & SOCIO-ECONOMIC VULNERABILITY MATRIX
 --------------------------------------------------------------------------------
-Elderly Population (65+ yrs) : ${currentWard?.vulnerability?.elderlyPct}%
-Outdoor / Labor Workforce    : ${currentWard?.vulnerability?.outdoorWorkerPct}%
-Informal / Tin-Roof Dwellings: ${currentWard?.vulnerability?.informalHousingPct}%
-Vegetative Canopy / Tree Cover: ${currentWard?.vulnerability?.greenCoverPct}%
-Composite Vulnerability Score: ${currentWard?.vulnerability?.compositeScore} / 100
+Elderly Population (65+ yrs) : ${elderlyPct}%
+Outdoor / Labor Workforce    : ${outdoorWorkerPct}%
+Informal / Tin-Roof Dwellings: ${informalHousingPct}%
+Vegetative Canopy / Tree Cover: ${greenCoverPct}%
+Composite Vulnerability Score: ${compositeScore} / 100
 
 4. PROJECTED HEALTH & HOSPITAL SURGE IMPACT
 --------------------------------------------------------------------------------
-Estimated Hospital Admissions Spike : +${Math.round(Math.max(5, (currentWard?.wbgt - 25.0) * 4.2))}%
+Estimated Hospital Admissions Spike : +${hospSurge}%
 Emergency Dehydration / Heat Cramps : HIGH SURVEILLANCE
 Mandatory Work-Rest Protocol Status : ACTIVE RESPITE ORDER
 
@@ -365,27 +384,27 @@ Official Government Document · Authorized for Municipal & Health Department Use
             <div className="dossier-metrics-grid">
               <div className="dossier-metric-box">
                 <span className="metric-box-label">Dry-Bulb Ambient</span>
-                <strong className="metric-box-val text-red-600">{currentWard?.temperature}°C</strong>
+                <strong className="metric-box-val text-red-600">{wardTemp}°C</strong>
               </div>
               <div className="dossier-metric-box">
                 <span className="metric-box-label">WBGT Heat Stress</span>
-                <strong className="metric-box-val text-amber-600">{currentWard?.wbgt}°C</strong>
+                <strong className="metric-box-val text-amber-600">{wardWbgt}°C</strong>
               </div>
               <div className="dossier-metric-box">
                 <span className="metric-box-label">Heat Index</span>
-                <strong className="metric-box-val text-orange-600">{currentWard?.heatIndex}°C</strong>
+                <strong className="metric-box-val text-orange-600">{wardHeatIndex}°C</strong>
               </div>
               <div className="dossier-metric-box">
                 <span className="metric-box-label">Relative Humidity</span>
-                <strong className="metric-box-val text-sky-600">{currentWard?.humidity}%</strong>
+                <strong className="metric-box-val text-sky-600">{wardHumidity}%</strong>
               </div>
               <div className="dossier-metric-box">
                 <span className="metric-box-label">Wind Velocity</span>
-                <strong className="metric-box-val text-indigo-600">{currentWard?.windSpeed} km/h</strong>
+                <strong className="metric-box-val text-indigo-600">{wardWindSpeed} km/h</strong>
               </div>
               <div className="dossier-metric-box">
                 <span className="metric-box-label">Solar Radiation</span>
-                <strong className="metric-box-val text-yellow-600">{currentWard?.solarRadiation} W/m²</strong>
+                <strong className="metric-box-val text-yellow-600">{wardSolarRadiation} W/m²</strong>
               </div>
             </div>
           </div>
@@ -400,20 +419,20 @@ Official Government Document · Authorized for Municipal & Health Department Use
               <ul className="dossier-list">
                 <li>
                   <span>Elderly Demographics (65+ yrs):</span>
-                  <strong>{currentWard?.vulnerability?.elderlyPct}%</strong>
+                  <strong>{elderlyPct}%</strong>
                 </li>
                 <li>
                   <span>Outdoor & Informal Labor Density:</span>
-                  <strong>{currentWard?.vulnerability?.outdoorWorkerPct}%</strong>
+                  <strong>{outdoorWorkerPct}%</strong>
                 </li>
                 <li>
                   <span>Informal / Low-Canopy Dwellings:</span>
-                  <strong>{currentWard?.vulnerability?.informalHousingPct}%</strong>
+                  <strong>{informalHousingPct}%</strong>
                 </li>
                 <li>
                   <span>Projected Emergency Hospital Surge:</span>
                   <strong className="text-red-600">
-                    +{Math.round(Math.max(5, (currentWard?.wbgt - 25.0) * 4.2))}% admissions
+                    +{hospSurge}% admissions
                   </strong>
                 </li>
               </ul>

@@ -250,9 +250,8 @@ export default function LandingPage({ onNavigateDashboard }) {
           <div className="hero-wbgt-badge-card">
             <div className="badge-card-top">
               <span className="badge-card-label">
-                {lang === 'hi' ? 'लाइव निगरानी (बेंगलुरु)' : 'LIVE MONITORING (BENGALURU)'}
+                {lang === 'hi' ? 'तापमान निगरानी (बेंगलुरु)' : 'THERMAL MONITORING (BENGALURU)'}
               </span>
-              <span className="live-dot-pulse"></span>
             </div>
 
             <div className="badge-wbgt-display">

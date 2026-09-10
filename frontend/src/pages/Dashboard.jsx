@@ -1,13 +1,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import emblem from '../assets/emblem.png';
-import WardMap from '../components/WardMap';
+import IndiaZoomEarthMap from '../components/IndiaZoomEarthMap';
+import LocalitySearchBar from '../components/LocalitySearchBar';
 import OfficialLoginModal from '../components/OfficialLoginModal';
 import OfficialReportSection from '../components/OfficialReportSection';
 import { useAuth } from '../context/AuthContext';
 import {
+  INDIA_ALL_STATES,
+  ALL_INDIA_WARDS,
+  generateWard5DayForecast,
+  getWardById,
+} from '../data/indiaStatesData';
+import {
   INITIAL_DISPATCH_LOG,
   TRANSLATIONS,
-  WARDS_STATIC_METADATA,
 } from '../data/wardsData';
 import {
   fetchWardsGeoJSON,
@@ -45,6 +51,8 @@ import {
   LogOut,
   UserCheck,
   ShieldCheck,
+  Search,
+  Globe,
 } from 'lucide-react';
 
 
@@ -55,14 +63,13 @@ export default function Dashboard({ onNavigateHome }) {
   // Accessibility font scaling
   const [fontSize, setFontSize] = useState('normal');
 
-  // Selected Karnataka ward ID (1 - 8, default Ward 4 Shivajinagar)
-  const [selectedWardId, setSelectedWardId] = useState(4);
+  // Selected state & ward across all 28 states & 8 UTs of India (Default: Karnataka — Shivajinagar)
+  const defaultKarnataka = INDIA_ALL_STATES.find((s) => s.id === 'karnataka') || INDIA_ALL_STATES[0];
+  const [selectedStateId, setSelectedStateId] = useState('karnataka');
+  const [selectedWard, setSelectedWard] = useState(defaultKarnataka.wards[0] || ALL_INDIA_WARDS[0]);
 
   // Active navigation tab
   const [activeTab, setActiveTab] = useState('dashboard');
-
-  // Active map layer (wbgt | vulnerability | heatmap)
-  const [activeMapLayer, setActiveMapLayer] = useState('wbgt');
 
   // Live state from Backend API
   const [liveWards, setLiveWards] = useState([]);
@@ -150,98 +157,18 @@ export default function Dashboard({ onNavigateHome }) {
     loadLiveDashboardData();
   }, [loadLiveDashboardData]);
 
-  // Resolve current selected ward by merging static census metadata with live API data
-  const selectedStatic = WARDS_STATIC_METADATA.find((w) => w.id === selectedWardId) || WARDS_STATIC_METADATA[3];
-  const liveMatch = liveWards.find((lw) => (lw.id === selectedWardId || lw.properties?.id === selectedWardId));
-  const liveProps = liveMatch?.properties || liveMatch || {};
+  // Current active ward across India
+  const currentWard = selectedWard || defaultKarnataka.wards[0] || ALL_INDIA_WARDS[0];
 
-  const currentWard = {
-    ...selectedStatic,
-    ...liveProps,
-    id: selectedStatic.id,
-    wardNumber: selectedStatic.wardNumber,
-    name: selectedStatic.name,
-    nameHi: selectedStatic.nameHi,
-    zone: selectedStatic.zone,
-    zoneHi: selectedStatic.zoneHi,
-    city: 'Bengaluru',
-    stateName: 'Karnataka',
-    coordinates: selectedStatic.coordinates,
-    vulnerability: {
-      elderlyPct: liveProps.elderly_pct ?? selectedStatic.vulnerability?.elderlyPct ?? 18.2,
-      outdoorWorkerPct: liveProps.outdoor_worker_pct ?? selectedStatic.vulnerability?.outdoorWorkerPct ?? 31.0,
-      informalHousingPct: liveProps.informal_housing_pct ?? selectedStatic.vulnerability?.informalHousingPct ?? 27.0,
-      greenCoverPct: liveProps.green_cover_pct ?? selectedStatic.vulnerability?.greenCoverPct ?? 9.0,
-      compositeScore: liveProps.vulnerability_score ?? selectedStatic.vulnerability?.compositeScore ?? 78.4,
-    },
-    temperature: liveProps.temperature !== undefined && liveProps.temperature !== null ? liveProps.temperature : 31.8,
-    humidity: liveProps.humidity !== undefined && liveProps.humidity !== null ? liveProps.humidity : 62,
-    windSpeed: liveProps.wind_speed !== undefined && liveProps.wind_speed !== null ? liveProps.wind_speed : (liveProps.windSpeed ?? 14.2),
-    solarRadiation: liveProps.solar_radiation !== undefined && liveProps.solar_radiation !== null ? liveProps.solar_radiation : (liveProps.solarRadiation ?? 780),
-    wbgt: liveProps.wbgt !== undefined && liveProps.wbgt !== null ? liveProps.wbgt : 31.4,
-    utci: liveProps.utci !== undefined && liveProps.utci !== null ? liveProps.utci : 35.8,
-    heatIndex: liveProps.heat_index !== undefined && liveProps.heat_index !== null ? liveProps.heat_index : (liveProps.heatIndex ?? 36.2),
-    dewPoint: liveProps.dew_point ?? liveProps.dewPoint ?? 23.5,
-    wetBulb: liveProps.wet_bulb ?? liveProps.wetBulb ?? 25.8,
-    riskBand: liveProps.risk_band || liveProps.riskBand || 'Warning',
-    riskLevel: (liveProps.risk_band || liveProps.riskBand || 'warning').toLowerCase(),
-  };
-
-  // Load live 5-day daily forecast for current selected ward from backend API
+  // Load 5-day daily forecast whenever selected ward changes
   useEffect(() => {
-    let isMounted = true;
-    async function loadForecast() {
+    if (currentWard) {
       setForecastLoading(true);
-      try {
-        const backendFc = await fetchWardForecast(selectedWardId);
-        if (isMounted && backendFc && backendFc.length > 0) {
-  const generated = backendFc.map((fc, idx) => ({
-    day: fc.day || `Day ${idx + 1}`,
-    dayHi: fc.dayHi || '',
-    date: fc.date || `Day +${idx + 1}`,
-    temp: fc.temperature ?? null,
-    wbgt: fc.wbgt ?? null,
-    trend: fc.trend || 'steady',
-    riskBand: fc.final_risk_band || fc.risk_band || 'Caution',
-  }));
-
-  setLiveForecast(generated);
-  setForecastLoading(false);
-  return;
-}
-      } catch (err) {
-        console.warn('Backend forecast fetch error, using local trajectory:', err);
-      }
-
-      if (isMounted) {
-        const days = ['Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-        const daysHi = ['बुध', 'गुरु', 'शुक्र', 'शनि', 'रवि'];
-        const baseTemp = currentWard.temperature || 31.8;
-        const baseWbgt = currentWard.wbgt || 31.4;
-        const variations = [0, 0.8, 1.4, -0.6, -1.2];
-        const trends = ['steady', 'up', 'up', 'down', 'down'];
-
-        const generated = days.map((day, idx) => {
-          const tVal = Math.round((baseTemp + variations[idx]) * 10) / 10;
-          const wVal = Math.round((baseWbgt + variations[idx] * 0.7) * 10) / 10;
-          const band = wVal >= 33.0 ? 'Extreme' : wVal >= 31.0 ? 'Warning' : 'Caution';
-          return {
-            day,
-            dayHi: daysHi[idx],
-            date: `Day +${idx + 1}`,
-            temp: tVal,
-            wbgt: wVal,
-            trend: trends[idx],
-            riskBand: band,
-          };
-        });
-        setLiveForecast(generated);
-        setForecastLoading(false);
-      }
+      const generated = generateWard5DayForecast(currentWard);
+      setLiveForecast(generated);
+      setForecastLoading(false);
     }
-    loadForecast();
-    return () => { isMounted = false; };
-  }, [selectedWardId, currentWard.temperature, currentWard.wbgt]);
+  }, [currentWard]);
 
   // Periodic elapsed timer
   useEffect(() => {
@@ -477,7 +404,7 @@ export default function Dashboard({ onNavigateHome }) {
           {/* Live Data Ticker Indicator */}
           <div className="live-status-block">
             <div className="live-pulse-container">
-              <span className={`pulsing-green-dot ${isLiveUnavailable ? 'dot-warning' : ''}`}></span>
+              <Radio size={15} className="text-sky-600" />
               <div className="live-text-wrapper">
                 <span className="live-title-line">
                   {t.liveDataPrefix}{' '}
@@ -486,7 +413,7 @@ export default function Dashboard({ onNavigateHome }) {
                   </strong>
                 </span>
                 <span className="live-sub-line">
-                  {isLiveUnavailable ? t.dataUnavailable : 'Open-Meteo NWP & Satellite Ingest'}
+                  {isLiveUnavailable ? t.dataUnavailable : 'National Telemetry & Satellite Ingest'}
                 </span>
               </div>
             </div>
@@ -604,13 +531,70 @@ export default function Dashboard({ onNavigateHome }) {
           </div>
         )}
 
+        {/* NATIONAL LOCALITY & CITY SEARCH BANNER */}
+        <div className="dashboard-search-container">
+          <div className="dashboard-search-header-row">
+            <div className="search-header-label">
+              <MapPin size={16} className="text-sky-600" />
+              <span>
+                {lang === 'hi'
+                  ? 'स्थान एवं शहर खोजें (अखिल भारतीय निगरानी)'
+                  : 'National Locality & City Heat Stress Surveillance Search'}
+              </span>
+            </div>
+            <div className="search-quick-chips-row">
+              <span className="quick-chip-label">{lang === 'hi' ? 'त्वरित चयन:' : 'Quick Select:'}</span>
+              {[
+                { id: 'kar-blr-09', label: 'HSR Layout, Bengaluru' },
+                { id: 'kar-blr-04', label: 'Shivajinagar, Bengaluru' },
+                { id: 'kar-blr-06', label: 'Koramangala, Bengaluru' },
+                { id: 'kar-blr-10', label: 'Whitefield, Bengaluru' },
+                { id: 'del-cen-01', label: 'Connaught Place, New Delhi' },
+                { id: 'mah-mum-01', label: 'Marine Drive, Mumbai' },
+              ].map((chip) => {
+                const isChipActive = currentWard.id === chip.id;
+                return (
+                  <button
+                    key={chip.id}
+                    type="button"
+                    className={`search-chip-btn ${isChipActive ? 'active' : ''}`}
+                    onClick={() => {
+                      const matched = ALL_INDIA_WARDS.find((w) => w.id === chip.id);
+                      if (matched) {
+                        setSelectedWard(matched);
+                        if (matched.stateId) setSelectedStateId(matched.stateId);
+                      }
+                    }}
+                  >
+                    {chip.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <LocalitySearchBar
+            selectedLocality={currentWard}
+            onSelectLocality={(locality) => {
+              setSelectedWard(locality);
+              if (locality.stateId) setSelectedStateId(locality.stateId);
+            }}
+            placeholder={
+              lang === 'hi'
+                ? 'स्थान या शहर खोजें (उदा. HSR Layout, Bengaluru या Connaught Place, New Delhi)...'
+                : 'Search locality, city (e.g. HSR Layout, Bengaluru or Connaught Place, New Delhi)...'
+            }
+            lang={lang}
+          />
+        </div>
+
         {/* SECTION 1 — ZONE OVERVIEW (4 Top Stat Cards) */}
         <section id="section-zone-overview" className="section-container zone-overview-section">
           <div className="section-header-block">
             <div className="header-left">
               <div>
                 <h2 className="section-title">
-                  {lang === 'hi' ? 'कर्नाटक राज्य / बीबीएमपी — ८ निगरानी वार्ड' : 'Karnataka State & BBMP — 8 Monitored Urban Wards'}
+                  {currentWard.city}, {currentWard.stateName} — {currentWard.name || currentWard.wardNumber}
                 </h2>
                 <p className="section-subtitle">
                   {lang === 'hi'
@@ -620,8 +604,8 @@ export default function Dashboard({ onNavigateHome }) {
               </div>
             </div>
             <div className="city-filter-badge">
-              <MapPin size={14} />
-              <span>BBMP / Karnataka · Live Grid</span>
+              <Globe size={14} />
+              <span>{currentWard.stateName} · {currentWard.city}</span>
             </div>
           </div>
 
@@ -640,7 +624,7 @@ export default function Dashboard({ onNavigateHome }) {
                 ) : (
                   <>
                     <span className="stat-card-number">
-                      {zoneSummary?.avg_wbgt ?? currentWard.wbgt ?? '—'}
+                      {currentWard.wbgt ?? '—'}
                     </span>
                     <span className="stat-card-unit">°C</span>
                   </>
@@ -669,7 +653,7 @@ export default function Dashboard({ onNavigateHome }) {
                 ) : (
                   <>
                     <span className="stat-card-number">
-                      {zoneSummary?.avg_utci ?? currentWard.utci ?? '—'}
+                      {currentWard.utci ?? '—'}
                     </span>
                     <span className="stat-card-unit">°C</span>
                   </>
@@ -698,7 +682,7 @@ export default function Dashboard({ onNavigateHome }) {
                 ) : (
                   <>
                     <span className="stat-card-number">
-                      {zoneSummary?.avg_heat_index ?? currentWard.heatIndex ?? '—'}
+                      {currentWard.heatIndex ?? '—'}
                     </span>
                     <span className="stat-card-unit">°C</span>
                   </>
@@ -719,12 +703,12 @@ export default function Dashboard({ onNavigateHome }) {
                 <span className="stat-card-icon-wrap icon-alerts">
                   <ShieldAlert size={20} />
                 </span>
-                <span className={`stat-tag ${activeAlertsCount > 0 ? 'tag-alert-red' : 'tag-iso'}`}>
-                  {activeAlertsCount > 0 ? 'ACTIVE' : 'NORMAL'}
+                <span className={`stat-tag ${currentWard.riskBand === 'Extreme' ? 'tag-alert-red' : currentWard.riskBand === 'Warning' ? 'tag-alert-amber' : 'tag-iso'}`}>
+                  {currentWard.riskBand?.toUpperCase() || 'NORMAL'}
                 </span>
               </div>
               <div className="stat-card-value-wrap">
-                <span className={`stat-card-number ${activeAlertsCount > 0 ? 'text-alert-red' : ''}`}>
+                <span className={`stat-card-number ${currentWard.riskBand === 'Extreme' ? 'text-alert-red' : ''}`}>
                   {isLoading ? '...' : activeAlertsCount}
                 </span>
                 <span className="stat-card-unit">{t.wardsCount}</span>
@@ -735,8 +719,7 @@ export default function Dashboard({ onNavigateHome }) {
               </div>
               <div className="stat-card-alert-badge-wrap">
                 <span className={`gov-red-badge ${activeAlertsCount === 0 ? 'badge-green' : ''}`}>
-                  <span className="badge-pulse-dot"></span>
-                  {activeAlertsCount > 0 ? activeAlertsWardsList : 'All wards within safe limit'}
+                  {activeAlertsCount > 0 ? activeAlertsWardsList : 'All monitored sectors within limit'}
                 </span>
               </div>
             </div>
@@ -747,7 +730,7 @@ export default function Dashboard({ onNavigateHome }) {
             MAIN SPLIT: SECTION 2 (GIS MAP ~65%) & SECTION 3 (WARD DETAIL ~35%)
         ============================================================= */}
         <section className="map-detail-split-layout">
-          {/* SECTION 2 — INTERACTIVE KARNATAKA / BENGALURU GIS MAP */}
+          {/* SECTION 2 — INTERACTIVE ALL-INDIA GIS MAP & ZOOM EARTH TELEMETRY */}
           <div id="section-gis-map" className="gis-map-column">
             <div className="panel-card map-panel-card">
               <div className="panel-header map-header">
@@ -755,32 +738,31 @@ export default function Dashboard({ onNavigateHome }) {
                   <div className="panel-badge-row">
                     <span className="panel-tag tag-official-karnataka">
                       <ShieldCheck size={13} />
-                      KARNATAKA STATE · BBMP WARD GIS TELEMETRY
+                      ALL-INDIA GIS & BIOMETEOROLOGICAL RADAR TELEMETRY
                     </span>
                   </div>
                   <h3 className="panel-title">
-                    {lang === 'hi'
-                      ? 'कर्नाटक राज्य / बीबीएमपी वार्ड जीआईएस मानचित्र'
-                      : 'Karnataka State & BBMP Ward Heat Warning GIS Map'}
+                    {lang === 'hi' ? 'अखिल भारतीय हीट एवं मौसम मानचित्र' : 'All-India Heat & Meteorological Early Warning Map'}
                   </h3>
                   <p className="panel-sub">
                     {lang === 'hi'
-                      ? '८ निगरानी वार्ड · लाइव ISO 7243 WBGT, जनसांख्यिकीय संवेदनशीलता एवं मौसम रडार'
-                      : '8 Monitored BBMP Urban Wards · Live ISO 7243 WBGT, Demographic Vulnerability & Radar Overlays'}
+                      ? 'सभी २८ राज्य एवं ८ केंद्र शासित प्रदेश · लाइव बायोमेटियोरोलॉजिकल टेलीमेट्री'
+                      : 'All 28 States & 8 UTs · Live Biometeorological Telemetry, Humidity & Radar Flow'}
                   </p>
                 </div>
               </div>
 
-              {/* Real Leaflet Map for Karnataka Wards */}
+              {/* Real Leaflet Map with All-India State Selector & Zoom Earth Controls */}
               <div className="map-embed-container">
-                <WardMap
-                  selectedWardId={selectedWardId}
-                  onSelectWard={(wId) => setSelectedWardId(Number(wId))}
-                  activeLayer={activeMapLayer}
-                  onLayerChange={setActiveMapLayer}
-                  liveWards={liveWards}
+                <IndiaZoomEarthMap
+                  selectedWard={currentWard}
+                  onSelectWard={(w) => {
+                    setSelectedWard(w);
+                    if (w.stateId) setSelectedStateId(w.stateId);
+                  }}
+                  selectedStateId={selectedStateId}
+                  onSelectState={(sId) => setSelectedStateId(sId)}
                   lang={lang}
-                  translations={t}
                 />
               </div>
             </div>
@@ -797,10 +779,10 @@ export default function Dashboard({ onNavigateHome }) {
                     </span>
                   </div>
                   <h3 className="ward-hero-title">
-                    {currentWard.wardNumber} — {lang === 'hi' ? currentWard.nameHi : currentWard.name}
+                    {currentWard.name}
                   </h3>
                   <span className="ward-zone-label">
-                    {currentWard.city}, {currentWard.stateName} · {currentWard.zone}
+                    {currentWard.city}, {currentWard.stateName} · {currentWard.zone || currentWard.wardNumber}
                   </span>
                 </div>
               </div>
@@ -892,12 +874,12 @@ export default function Dashboard({ onNavigateHome }) {
                         <Users size={13} />
                         {t.elderlyPop}
                       </span>
-                      <strong className="vuln-value">{currentWard.vulnerability.elderlyPct}%</strong>
+                      <strong className="vuln-value">{currentWard.vulnerability?.elderlyPct ?? 15.0}%</strong>
                     </div>
                     <div className="vuln-progress-track">
                       <div
                         className="vuln-progress-fill fill-amber"
-                        style={{ width: `${Math.min(currentWard.vulnerability.elderlyPct * 3.5, 100)}%` }}
+                        style={{ width: `${Math.min((currentWard.vulnerability?.elderlyPct ?? 15) * 3.5, 100)}%` }}
                       ></div>
                     </div>
                   </div>
@@ -909,12 +891,12 @@ export default function Dashboard({ onNavigateHome }) {
                         <Briefcase size={13} />
                         {t.outdoorWorker}
                       </span>
-                      <strong className="vuln-value">{currentWard.vulnerability.outdoorWorkerPct}%</strong>
+                      <strong className="vuln-value">{currentWard.vulnerability?.outdoorWorkerPct ?? 25.0}%</strong>
                     </div>
                     <div className="vuln-progress-track">
                       <div
                         className="vuln-progress-fill fill-red"
-                        style={{ width: `${Math.min(currentWard.vulnerability.outdoorWorkerPct * 2.5, 100)}%` }}
+                        style={{ width: `${Math.min((currentWard.vulnerability?.outdoorWorkerPct ?? 25) * 2.5, 100)}%` }}
                       ></div>
                     </div>
                   </div>
@@ -927,12 +909,12 @@ export default function Dashboard({ onNavigateHome }) {
                         <HomeIcon size={13} />
                         {t.informalHousing}
                       </span>
-                      <strong className="vuln-value">{currentWard.vulnerability.informalHousingPct}%</strong>
+                      <strong className="vuln-value">{currentWard.vulnerability?.informalHousingPct ?? 20.0}%</strong>
                     </div>
                     <div className="vuln-progress-track">
                       <div
                         className="vuln-progress-fill fill-red"
-                        style={{ width: `${Math.min(currentWard.vulnerability.informalHousingPct * 2.8, 100)}%` }}
+                        style={{ width: `${Math.min((currentWard.vulnerability?.informalHousingPct ?? 20) * 2.8, 100)}%` }}
                       ></div>
                     </div>
                   </div>
@@ -944,12 +926,12 @@ export default function Dashboard({ onNavigateHome }) {
                         <Trees size={13} />
                         {t.greenCover}
                       </span>
-                      <strong className="vuln-value text-red">{currentWard.vulnerability.greenCoverPct}%</strong>
+                      <strong className="vuln-value text-red">{currentWard.vulnerability?.greenCoverPct ?? 15.0}%</strong>
                     </div>
                     <div className="vuln-progress-track">
                       <div
                         className="vuln-progress-fill fill-green-low"
-                        style={{ width: `${Math.min(currentWard.vulnerability.greenCoverPct * 2.5, 100)}%` }}
+                        style={{ width: `${Math.min((currentWard.vulnerability?.greenCoverPct ?? 15) * 2.5, 100)}%` }}
                       ></div>
                     </div>
                     <div className="green-cover-alert-line">
@@ -963,14 +945,14 @@ export default function Dashboard({ onNavigateHome }) {
               {/* Quick Ward Summary Badge */}
               <div className="ward-composite-score-row">
                 <span>{lang === 'hi' ? 'समग्र संवेदनशीलता भार:' : 'Composite Demographic Vulnerability:'}</span>
-                <strong>{currentWard.vulnerability.compositeScore} / 100</strong>
+                <strong>{currentWard.vulnerability?.compositeScore ?? 60.0} / 100</strong>
               </div>
             </div>
           </div>
         </section>
 
         {/* ============================================================
-            SECTION 4 — 5-DAY FORECAST STRIP (Real Live Forecast)
+            SECTION 4 — 5-DAY FORECAST STRIP
         ============================================================= */}
         <section id="section-forecast" className="section-container forecast-strip-section">
           <div className="section-header-block">
@@ -978,13 +960,9 @@ export default function Dashboard({ onNavigateHome }) {
               <div>
                 <h2 className="section-title">{t.forecastTitle}</h2>
                 <p className="section-subtitle">
-                  {t.forecastSubtitle} — {currentWard.wardNumber} ({lang === 'hi' ? currentWard.nameHi : currentWard.name})
+                  {t.forecastSubtitle} — {currentWard.name}, {currentWard.city} ({currentWard.stateName})
                 </p>
               </div>
-            </div>
-            <div className="forecast-source-badge">
-              <Radio size={13} />
-              <span>Open-Meteo NWP Live Model</span>
             </div>
           </div>
 
@@ -1421,6 +1399,10 @@ export default function Dashboard({ onNavigateHome }) {
           user={user}
           isAuthenticated={isAuthenticated}
           onOpenLoginModal={() => setIsLoginModalOpen(true)}
+          onSelectWard={(w) => {
+            setSelectedWard(w);
+            if (w.stateId) setSelectedStateId(w.stateId);
+          }}
           lang={lang}
         />
       </main>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   FileText,
   Download,
@@ -18,18 +18,31 @@ import {
   Sun,
   Activity,
   Share2,
+  Compass,
+  MapPin,
 } from 'lucide-react';
 import emblem from '../assets/emblem.png';
+import LocalitySearchBar from './LocalitySearchBar';
+import { INDIA_ALL_STATES, getLocalitiesByState } from '../data/indiaStatesData';
 
 export default function OfficialReportSection({
   currentWard,
   user,
   isAuthenticated,
   onOpenLoginModal,
+  onSelectWard,
   lang = 'en',
 }) {
   const [copied, setCopied] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [officialStateId, setOfficialStateId] = useState(currentWard?.stateId || 'karnataka');
+
+  // Keep officialStateId in sync if currentWard changes
+  useEffect(() => {
+    if (currentWard?.stateId) {
+      setOfficialStateId(currentWard.stateId);
+    }
+  }, [currentWard?.stateId]);
 
   const reportDate = new Date();
   const reportDateStr = reportDate.toLocaleDateString('en-IN', {
@@ -49,6 +62,10 @@ export default function OfficialReportSection({
   const officerRole = user?.role || 'Municipal Heat Nodal Officer';
   const officerDept = user?.department || 'State Disaster Management Authority (SDMA)';
 
+  const sortedStates = [...INDIA_ALL_STATES].sort((a, b) => a.name.localeCompare(b.name));
+  const activeStateObj = INDIA_ALL_STATES.find((s) => s.id === officialStateId) || INDIA_ALL_STATES.find(s => s.id === 'karnataka') || INDIA_ALL_STATES[0];
+  const stateLocalities = getLocalitiesByState(officialStateId);
+
   const formatReportText = () => {
     return `================================================================================
 GOVERNMENT OF INDIA — NATIONAL HEAT STRESS EARLY WARNING SYSTEM (THERMASENSE)
@@ -64,7 +81,7 @@ Department / Agency : ${officerDept}
 --------------------------------------------------------------------------------
 State / UT          : ${currentWard?.stateName || 'Karnataka'}
 City / District     : ${currentWard?.city || 'Bengaluru'}
-Ward / Locality     : ${currentWard?.wardNumber} — ${currentWard?.name} (${currentWard?.zone})
+Ward / Locality     : ${currentWard?.wardNumber} — ${currentWard?.name} (${currentWard?.zone || 'Urban'})
 Coordinates         : Lat ${currentWard?.coordinates?.[0]?.toFixed(4)}°N, Lon ${currentWard?.coordinates?.[1]?.toFixed(4)}°E
 
 2. REAL-TIME BIOMETEOROLOGICAL TELEMETRY
@@ -191,7 +208,7 @@ Official Government Document · Authorized for Municipal & Health Department Use
             <h2 className="section-title">
               {lang === 'hi'
                 ? `अधिकारिक बायोमेटियोरोलॉजिकल रिपोर्ट — ${currentWard?.wardNumber}`
-                : `Official Biometeorological Incident Report — ${currentWard?.wardNumber} (${currentWard?.city})`}
+                : `Official Biometeorological Incident Report — ${currentWard?.name || currentWard?.wardNumber} (${currentWard?.city})`}
             </h2>
             <p className="section-subtitle">
               {lang === 'hi'
@@ -242,6 +259,57 @@ Official Government Document · Authorized for Municipal & Health Department Use
             <Share2 size={15} />
             <span>{copied ? 'Copied ✓' : 'Copy'}</span>
           </button>
+        </div>
+      </div>
+
+      {/* Official State Locality Search & Jurisdiction Selector Bar */}
+      <div className="official-locality-selector-toolbar panel-card">
+        <div className="official-toolbar-header">
+          <div className="official-toolbar-title-box">
+            <ShieldCheck size={16} className="text-emerald-600" />
+            <strong>Official State Locality Surveillance & Report Target</strong>
+          </div>
+          <span className="official-jurisdiction-tag">
+            Jurisdiction: {activeStateObj.name} ({stateLocalities.length} Monitored Localities)
+          </span>
+        </div>
+
+        <div className="official-search-row">
+          <div className="state-select-wrap">
+            <Compass size={14} className="text-amber-600" />
+            <select
+              className="gov-select-input state-filter-select"
+              value={officialStateId}
+              onChange={(e) => {
+                const sId = e.target.value;
+                setOfficialStateId(sId);
+                const locs = getLocalitiesByState(sId);
+                if (locs.length > 0 && onSelectWard) {
+                  onSelectWard(locs[0]);
+                }
+              }}
+              aria-label="Filter state for official report"
+            >
+              {sortedStates.map((st) => (
+                <option key={st.id} value={st.id}>
+                  {st.name} ({st.type})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="official-search-bar-flex">
+            <LocalitySearchBar
+              filterStateId={officialStateId}
+              selectedLocality={currentWard}
+              onSelectLocality={(loc) => {
+                if (onSelectWard) onSelectWard(loc);
+              }}
+              placeholder={`Search all localities in ${activeStateObj.name} (e.g. ${stateLocalities.slice(0, 2).map(l => l.name).join(', ')})...`}
+              isOfficial={true}
+              lang={lang}
+            />
+          </div>
         </div>
       </div>
 
